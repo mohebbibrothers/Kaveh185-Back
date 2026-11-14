@@ -144,11 +144,13 @@ class ExamCurrentAttemptAPIView(APIView):
                 },
                 message="زمان آزمون به پایان رسیده و کارنامه صادر شده است.",
             )
+        active_payload = build_active_attempt_payload(attempt)
         return success_response(
             data={
+                **active_payload,
                 "status": attempt.status,
                 "is_finished": False,
-                "attempt": build_active_attempt_payload(attempt),
+                "attempt": active_payload,
             }
         )
 

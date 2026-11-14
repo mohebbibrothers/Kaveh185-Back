@@ -148,6 +148,7 @@ def build_active_attempt_payload(attempt: ExamAttempt) -> dict[str, Any]:
         "answered_count": answered_count,
         "unanswered_count": max(0, attempt.total_questions - answered_count),
         "all_answered": answered_count == attempt.total_questions,
+        "can_finish_now": answered_count == attempt.total_questions,
         "current_question_number": next_unanswered_number or attempt.total_questions,
         "questions": questions_payload,
     }

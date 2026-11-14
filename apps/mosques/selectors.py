@@ -147,15 +147,17 @@ def get_mosque_leaderboard_snapshot() -> dict[str, Any]:
             leaderboard.append(
                 {
                     "rank": idx,
+                    "id": item["mosque_id"],
+                    "mosque_id": item["mosque_id"],
                     "tier": tier,
                     "tier_label": MosqueTier(tier).label,
-                    "mosque_id": item["mosque_id"],
                     "code": item["code"],
                     "name": item["name"],
                     "neighborhood": item["neighborhood"],
                     "imam_name": item["imam_name"],
                     "commander_name": item["commander_name"],
                     "completed_participants_count": completed_cnt,
+                    "participants_count": completed_cnt,
                     "registered_users_count": item["registered_users_count"],
                     "target_participants": item["target_participants"],
                     "target_progress_percent": target_pct,
@@ -169,8 +171,11 @@ def get_mosque_leaderboard_snapshot() -> dict[str, Any]:
         return {
             "organizer": "حوزه مقاومت بسیج ۱۸۵ شهید کاوه",
             "total_mosques": len(leaderboard),
+            "total_active_mosques": len(leaderboard),
             "total_completed_participants": total_completed,
+            "total_exam_participants": total_completed,
             "total_registered_users": total_registered,
+            "total_registered_participants": total_registered,
             "leaderboard": leaderboard,
         }
 

@@ -13,4 +13,5 @@ urlpatterns = [
     path("live/", HealthPingAPIView.as_view(), name="health-live"),
     path("ready/", HealthReadyAPIView.as_view(), name="health-ready"),
     path("detailed/", HealthDetailedAPIView.as_view(), name="health-detailed"),
+    path("deep/", HealthDetailedAPIView.as_view(), name="health-deep"),
 ]
