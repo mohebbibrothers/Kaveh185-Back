@@ -1,0 +1,46 @@
+# ============================================================
+# وابستگی‌های مستقیم runtime (پین‌شده) — Kaveh185
+# ============================================================
+# چرا چهار فایل requirements؟
+#   requirements.txt          → وابستگی‌های مستقیم runtime (این فایل)
+#   requirements-dev.txt      → ابزارهای توسعه (pytest/ruff/mypy/bandit/...)
+#   requirements-lock.txt     → قفل کامل runtime (تولید خودکار با make lock)
+#   requirements-dev-lock.txt → قفل کامل runtime + dev (تولید خودکار با make lock)
+# ============================================================
+
+argon2-cffi==25.1.0
+asgiref==3.13.0
+billiard==4.3.2
+celery==5.7.0
+certifi==2026.10.19
+charset-normalizer==3.5.2
+click-repl==0.4.1
+cryptography==50.0.2
+Django==6.1.3
+django-cors-headers==4.9.0
+django-filter==26.2
+django-redis==7.0.0
+djangorestframework==3.18.3
+djangorestframework_simplejwt==5.5.1
+drf-spectacular==0.30.0
+gunicorn==27.0.1
+idna==3.20
+jsonschema==4.26.0
+jsonschema-specifications==2025.9.1
+openpyxl==3.1.5
+prometheus-client==0.26.0
+psycopg[binary]==3.3.9
+PyJWT==2.15.1
+PyMySQL==1.2.4
+python-decouple==3.8
+PyYAML==6.0.3
+redis==8.1.0
+referencing==0.37.0
+requests==2.33.0
+rpds-py==2026.9.1
+sqlparse==0.6.1
+tzdata==2026.6
+uritemplate==4.2.0
+urllib3==2.8.0
+wcwidth==0.9.4
+whitenoise==6.12.0

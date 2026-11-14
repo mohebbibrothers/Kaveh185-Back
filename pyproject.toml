@@ -1,0 +1,169 @@
+# ============================================================
+# Project: Kaveh185 (کاوه ۱۸۵ — حوزه مقاومت بسیج ۱۸۵ شهید کاوه)
+# Tooling configuration (Ruff, Pytest, Mypy, Coverage, Bandit)
+# ============================================================
+# هدف: یک منبع حقیقت واحد برای پیکربندی کیفیت کد، تایپ، امنیت و تست.
+# اصول مهندسی:
+# - Zero-warning policy در لینت و تست (filterwarnings = ["error"])
+# - تمام ماژول‌ها، کلاس‌ها و توابع سطح ماژول دارای docstring معماری
+# - ممنوعیت کامل print، datetime.now() بی‌منطقه و random غیرامن در کد تولیدی
+# ============================================================
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+extend-exclude = [
+    ".venv",
+    "migrations",
+    "staticfiles",
+    "media",
+    "schema.yaml",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "W",
+    "F",
+    "I",
+    "B",
+    "UP",
+    "SIM",
+    "C4",
+    "DJ",
+    "RUF",
+    "S",
+    "PTH",
+    "RET",
+    "T20",
+    "TID",
+    "LOG",
+    "G",
+]
+
+ignore = [
+    "E501",   # line-too-long — formatter مدیریت می‌کند
+    "B008",   # function call in default arg — الگوی رایج DRF/Django
+    "RUF001", # نویسه‌های فارسی در رشته‌ها عمدی است
+    "RUF002", # نویسه‌های فارسی در داک‌استرینگ‌ها عمدی است
+    "RUF003", # نویسه‌های فارسی در کامنت‌ها عمدی است
+    "RUF012", # ClassVar روی Meta/ModelAdmin جنگو ایدیوماتیک نیست
+    "DJ001",  # null=True روی برخی فیلدهای متنی اختیاری مجاز است
+    "S101",   # assert در تست‌ها مجاز است (bandit جداگانه کد تولیدی را اسکن می‌کند)
+    "S105",   # نام متغیرهای توکن/پسورد در ثابت‌ها
+    "S106",   # آرگومان‌های توکن/پسورد در تست‌ها و سرویس‌ها
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/migrations/*.py" = ["ALL"]
+"**/settings/*.py"   = ["F401", "F403", "F405", "S105"]
+"manage.py"          = ["E402"]
+"**/tests/**/*.py"   = ["E501", "S101", "S105", "S106", "T20"]
+"**/test_*.py"       = ["E501", "S101", "S105", "S106", "T20"]
+"conftest.py"        = ["E402", "S105"]
+"scripts/*.py"       = ["T201", "S603", "S607"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["apps", "config"]
+combine-as-imports = true
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"datetime.datetime.utcnow".msg = "از django.utils.timezone.now() استفاده کنید (آگاه به منطقهٔ زمانی)."
+"datetime.datetime.now".msg = "زمان بی‌منطقه ممنوع است؛ از django.utils.timezone.now() استفاده کنید."
+"random".msg = "برای تصادفی‌سازی آزمون و امنیت از secrets.SystemRandom() یا ماژول secrets استفاده کنید."
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
+docstring-code-format = false
+
+# ════════════════════════════════════════════════════════════
+# Pytest
+# ════════════════════════════════════════════════════════════
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings.development"
+python_files = ["tests.py", "test_*.py", "*_tests.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+testpaths = ["apps", "tests"]
+
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+    "--tb=short",
+    "--reuse-db",
+]
+
+filterwarnings = [
+    "error",
+    "ignore:'_UnionGenericAlias' is deprecated and slated for removal in Python 3.17:DeprecationWarning",
+]
+
+markers = [
+    "unit: تست‌های سریع بدون وابستگی خارجی",
+    "integration: تست‌های یکپارچگی با دیتابیس و لایه‌های واقعی",
+    "architecture: گیت‌های انضباط معماری (AST)",
+    "contract: گیت‌های قرارداد API، OpenAPI و مستندات",
+    "security: تست‌های امنیتی، رمزنگاری، عدم افشای کلید سوالات و ضدتقلب",
+    "concurrency: تست‌های همزمانی و اتمیک بودن شرکت در آزمون",
+    "postgres: تست‌های اختصاصی موتور PostgreSQL",
+    "sqlite: تست‌های اختصاصی موتور SQLite",
+    "redis: تست‌های یکپارچگی لایه کش روی Redis واقعی",
+]
+
+# ════════════════════════════════════════════════════════════
+# Mypy
+# ════════════════════════════════════════════════════════════
+[tool.mypy]
+python_version = "3.13"
+files = ["apps", "config"]
+namespace_packages = true
+explicit_package_bases = true
+ignore_missing_imports = true
+follow_imports = "silent"
+exclude = "(^|/)(migrations|tests)/"
+warn_redundant_casts = true
+warn_unused_ignores = false
+check_untyped_defs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+no_implicit_optional = true
+show_error_codes = true
+local_partial_types = true
+
+# ════════════════════════════════════════════════════════════
+# Coverage
+# ════════════════════════════════════════════════════════════
+[tool.coverage.run]
+source = ["apps", "config"]
+branch = true
+omit = [
+    "*/migrations/*",
+    "*/tests/*",
+    "*/test_*.py",
+    "*/__init__.py",
+    "manage.py",
+    "config/asgi.py",
+    "config/wsgi.py",
+    "config/settings/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+precision = 2
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+
+# ════════════════════════════════════════════════════════════
+# Bandit
+# ════════════════════════════════════════════════════════════
+[tool.bandit]
+exclude_dirs = ["tests", "migrations", ".venv"]
+skips = ["B101", "B105"]

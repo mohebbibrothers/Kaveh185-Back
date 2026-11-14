@@ -1,0 +1,31 @@
+# Python & Virtualenvs
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+
+# Django & Databases
+*.log
+db.sqlite3
+db.sqlite3-journal
+staticfiles/
+media/
+.env
+
+# Testing & Static Analysis Caches
+.cache/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store

@@ -1,0 +1,9 @@
+# ==============================================================================
+# Kaveh185 — Recommended cPanel Cron Jobs (Shared Hosting without Celery/Redis)
+# ==============================================================================
+
+# 1. Verify tamper-evident SHA-256 audit hash chain every hour
+0 * * * * cd ~/Kaveh185-Back && ~/virtualenv/Kaveh185-Back/3.13/bin/python manage.py verify_audit_chain >> ~/kaveh185_audit.log 2>&1
+
+# 2. Clear expired Django sessions daily at 03:30 AM
+30 3 * * * cd ~/Kaveh185-Back && ~/virtualenv/Kaveh185-Back/3.13/bin/python manage.py clearsessions >> ~/kaveh185_maintenance.log 2>&1

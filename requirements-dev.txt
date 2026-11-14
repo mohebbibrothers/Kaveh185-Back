@@ -1,0 +1,25 @@
+# ============================================================
+# Developer-only dependencies (NOT installed in production) — Kaveh185
+# ============================================================
+# هر ابزار اینجا فقط برای کیفیت کد، تست، یا توسعه local/CI لازم است.
+# Production image باید فقط requirements-lock.txt را نصب کند.
+
+# ── Code quality ───────────────────────────────────────────
+ruff==0.17.5
+mypy==2.4.1
+
+# ── Testing ────────────────────────────────────────────────
+pytest==9.0.3
+pytest-django==4.14.0
+pytest-cov==7.1.0
+factory-boy==3.3.3
+responses==0.26.3
+
+# ── Security auditing ──────────────────────────────────────
+pip-audit==2.10.1
+bandit==1.9.4
+detect-secrets==1.5.0
+
+# ── Transitive drift pins ──────────────────────────────────
+filelock==4.2.10
+platformdirs==4.14.5
