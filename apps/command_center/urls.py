@@ -10,4 +10,5 @@ app_name = "command_center"
 
 urlpatterns = [
     path("", AdminCommandCenterSnapshotAPIView.as_view(), name="snapshot"),
+    path("overview/", AdminCommandCenterSnapshotAPIView.as_view(), name="overview"),
 ]

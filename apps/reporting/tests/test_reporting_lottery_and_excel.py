@@ -86,11 +86,45 @@ def test_multi_filter_lottery_explorer_admin_detail_and_7_sheet_excel(
         assert "correct_option_text" in ans
         assert ans["result_status"] in {"correct", "wrong", "unanswered"}
 
-    # ۳) مشاهده پروندهٔ کامل تک‌شرکت‌کننده توسط ادمین (با و بدون آزمون)
+    # ۳) مشاهده پروندهٔ کامل تک‌شرکت‌کننده توسط ادمین (با شناسه، کد رهگیری، و بدون آزمون)
     detail_resp = admin_client.get(f"/api/v1/reporting/admin/participants/{teen_user.id}/")
     assert detail_resp.status_code == 200
     assert detail_resp.json()["data"]["has_exam_attempt"] is True
     assert len(detail_resp.json()["data"]["participant_report"]["answers"]) == 5
+
+    teen_tracking = row["tracking_code"]
+    by_tracking_resp = admin_client.get(
+        f"/api/v1/reporting/admin/participants/by-tracking/{teen_tracking}/"
+    )
+    assert by_tracking_resp.status_code == 200
+    assert by_tracking_resp.json()["data"]["participant_report"]["tracking_code"] == teen_tracking
+
+    # ۳.۲) اجرای قرعه‌کشی زنده مراسم با گواهی اثبات رمزنگاری‌شده
+    draw_resp = admin_client.post(
+        "/api/v1/reporting/admin/lottery/draw/",
+        data={
+            "winners_count": 1,
+            "reserves_count": 1,
+            "ceremony_title": "قرعه‌کشی هفته بسیج حوزه ۱۸۵ شهید کاوه",
+            "client_seed": "STAGE-1405",
+            "min_correct": 0,
+        },
+        format="json",
+    )
+    assert draw_resp.status_code == 200
+    draw_data = draw_resp.json()["data"]
+    assert draw_data["eligible_pool_count"] >= 2
+    assert draw_data["drawn_winners_count"] == 1
+    assert draw_data["drawn_reserves_count"] == 1
+    assert len(draw_data["cryptographic_proof"]["draw_proof_sha256"]) == 64
+
+    # ۳.۳) بررسی اندپوینت‌های یکپارچهٔ صفحه اول (Bootstrap) و کاتالوگ کشف API
+    bootstrap_resp = admin_client.get("/api/v1/core/bootstrap/")
+    assert bootstrap_resp.status_code == 200
+    assert len(bootstrap_resp.json()["data"]["mosques"]) == 17
+    root_resp = admin_client.get("/api/v1/")
+    assert root_resp.status_code == 200
+    assert "public_endpoints" in root_resp.json()["data"]
 
     no_exam_user = create_test_participant(
         seq=303,

@@ -1,0 +1,242 @@
+{
+  "info": {
+    "name": "Kaveh185 Enterprise Backend API (v1)",
+    "description": "مجموعه کامل اندپوینت‌های سامانه مسابقه بزرگ فرهنگی و کتابخوانی هفته بسیج — حوزه مقاومت بسیج ۱۸۵ شهید کاوه",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8000" },
+    { "key": "accessToken", "value": "" },
+    { "key": "adminToken", "value": "" },
+    { "key": "trackingCode", "value": "KV185-8F9K2M4P" }
+  ],
+  "item": [
+    {
+      "name": "1. Public & Landing Page (بدون نیاز به توکن)",
+      "item": [
+        {
+          "name": "Single-Request Landing Bootstrap (وضعیت آزمون + ۱۷ مسجد + رنکینگ)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/core/bootstrap/"
+          }
+        },
+        {
+          "name": "وضعیت بازه زمانی آزمون (upcoming / open / ended)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/exam/status/"
+          }
+        },
+        {
+          "name": "لیست کشویی ۱۷ مسجد فعال (فرم ثبت‌نام)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/mosques/"
+          }
+        },
+        {
+          "name": "جدول رنکینگ زنده مشارکت ۱۷ مسجد",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/mosques/leaderboard/"
+          }
+        },
+        {
+          "name": "استعلام اصالت رسید کارنامه با کد رهگیری",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/exam/receipt/{{trackingCode}}/"
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Participant Registration & Auth (ثبت‌نام و ورود شرکت‌کننده)",
+      "item": [
+        {
+          "name": "ثبت‌نام یکپارچه شرکت‌کننده و دریافت توکن ورود مستقیم",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"محمدحسین\",\n  \"last_name\": \"کریمی\",\n  \"national_id\": \"0013542419\",\n  \"phone_number\": \"09123456789\",\n  \"birth_date\": \"1382/06/15\",\n  \"mosque_id\": 1\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/auth/register/"
+          }
+        },
+        {
+          "name": "مشاهده پروفایل و وضعیت مجوز آزمون کاربر جاری",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/v1/auth/me/"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Participant 5-Question Exam Flow (آزمون ۵ سواله و کارنامه)",
+      "item": [
+        {
+          "name": "گام ۱: کلیک روی دکمه «ورود به آزمون» (قرعه ۵ سوال و شروع تایمر)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": "{{baseUrl}}/api/v1/exam/start/"
+          }
+        },
+        {
+          "name": "گام ۲: بازیابی جلسه فعال آزمون (هنگام رفرش صفحه)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/v1/exam/current/"
+          }
+        },
+        {
+          "name": "گام ۳: ثبت پاسخ سوال (به ترتیب ۱ تا ۵ — بدون امکان رد کردن)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"question_number\": 1,\n  \"selected_position\": 2\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/exam/answer/"
+          }
+        },
+        {
+          "name": "گام ۴: پایان آزمون و صدور کارنامه نهایی",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": "{{baseUrl}}/api/v1/exam/finish/"
+          }
+        },
+        {
+          "name": "گام ۵: مشاهده مجدد کارنامه نهایی شرکت‌کننده",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/v1/exam/report-card/"
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Admin Panel, Question Bank, Lottery Explorer & 7-Sheet Excel",
+      "item": [
+        {
+          "name": "ورود ادمین با رمز عبور",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"09120000000\",\n  \"password\": \"StrongAdminPass!1405\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/auth/login/password/"
+          }
+        },
+        {
+          "name": "مرکز فرماندهی ۳۶۰ درجه ادمین (Single-Request Command Center)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/v1/admin/command-center/"
+          }
+        },
+        {
+          "name": "مشاهده و ویرایش تنظیمات آزمون و بازه زمانی",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/v1/exam/admin/config/"
+          }
+        },
+        {
+          "name": "مدیریت بانک سوال چهارگزینه‌ای (لیست و افزودن سوال)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/v1/exam/admin/questions/"
+          }
+        },
+        {
+          "name": "کاوشگر چندفیلتره شرکت‌کنندگان ویژه مراسم قرعه‌کشی حضوری",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/v1/reporting/admin/participants/?mosque_ids=1,2&min_correct=4&min_age=12&max_age=25&ordering=-total_score,duration_seconds"
+          }
+        },
+        {
+          "name": "اجرای قرعه‌کشی زنده مراسم با گواهی اثبات رمزنگاری‌شده SHA-256",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"winners_count\": 3,\n  \"reserves_count\": 2,\n  \"ceremony_title\": \"مراسم قرعه‌کشی هفته بسیج حوزه ۱۸۵ شهید کاوه\",\n  \"client_seed\": \"BASIJ-1405-STAGE\",\n  \"min_correct\": 4\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/reporting/admin/lottery/draw/"
+          }
+        },
+        {
+          "name": "مشاهده ریز ۵ سوال و گزینه‌های انتخابی یک شرکت‌کننده (ادمین)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/v1/reporting/admin/participants/1/"
+          }
+        },
+        {
+          "name": "دانلود فایل اکسل ۷ برگی راست‌به‌چپ (RTL .xlsx)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": "{{baseUrl}}/api/v1/reporting/admin/export.xlsx?ordering=-total_score,duration_seconds"
+          }
+        }
+      ]
+    }
+  ]
+}

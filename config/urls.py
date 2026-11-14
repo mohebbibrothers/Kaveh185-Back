@@ -12,12 +12,15 @@ from apps.core.docs_gate import (
     GatedSpectacularSwaggerView,
 )
 from apps.core.metrics_views import PrometheusMetricsView
+from apps.core.views import APIRootDiscoveryView, RootDiscoveryAliasView
 
 admin_url = str(getattr(settings, "ADMIN_URL_PATH", "secure-kaveh185-admin/")).lstrip("/")
 if not admin_url.endswith("/"):
     admin_url += "/"
 
 urlpatterns = [
+    path("", RootDiscoveryAliasView.as_view(), name="api-root-welcome"),
+    path("api/v1/", APIRootDiscoveryView.as_view(), name="api-v1-discovery"),
     path(admin_url, admin.site.urls),
     # پروب‌های سلامت، متریک‌ها و متادیتای نسخه
     path("api/v1/health/", include("apps.core.health.urls")),
@@ -35,4 +38,8 @@ urlpatterns = [
     path("api/v1/notifications/", include("apps.notifications.urls")),
     path("api/v1/audit-logs/", include("apps.audit_logs.urls")),
     path("api/v1/admin/command-center/", include("apps.command_center.urls")),
+    path(
+        "api/v1/command-center/",
+        include(("apps.command_center.urls", "command_center"), namespace="command_center_alias"),
+    ),
 ]

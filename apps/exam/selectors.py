@@ -62,6 +62,8 @@ def get_public_exam_status() -> dict[str, Any]:
             "window_state_label": ExamWindowState(window_state).label,
             "can_participate": can_participate,
             "status_message": status_message,
+            "server_time": now.isoformat(),
+            "server_time_jalali": format_jalali_datetime(now),
             "starts_at": config.starts_at.isoformat(),
             "starts_at_jalali": format_jalali_datetime(config.starts_at),
             "ends_at": config.ends_at.isoformat(),
@@ -80,6 +82,26 @@ def get_public_exam_status() -> dict[str, Any]:
         key_suffix="public_status",
         producer=_produce,
     )
+
+
+def get_public_landing_bootstrap() -> dict[str, Any]:
+    """بستهٔ یکپارچهٔ صفحهٔ اول (وضعیت آزمون + لیست کشویی ۱۷ مسجد + رنکینگ زندهٔ مساجد)."""
+    from apps.mosques.selectors import (
+        get_active_mosques_dropdown,
+        get_mosque_leaderboard_snapshot,
+    )
+
+    now = timezone.now()
+    exam_status = get_public_exam_status()
+    mosques = get_active_mosques_dropdown()
+    leaderboard = get_mosque_leaderboard_snapshot()
+    return {
+        "server_time": now.isoformat(),
+        "server_time_jalali": format_jalali_datetime(now),
+        "exam_status": exam_status,
+        "mosques": mosques,
+        "leaderboard": leaderboard,
+    }
 
 
 def build_active_attempt_payload(attempt: ExamAttempt) -> dict[str, Any]:

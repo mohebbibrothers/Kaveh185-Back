@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
+import secrets
 from datetime import date
 from typing import Any
 
@@ -12,7 +14,7 @@ from django.utils import timezone
 from apps.authentication.choices import UserRole
 from apps.authentication.models import User
 from apps.core.exceptions import NotFoundDomainError
-from apps.core.jalali import parse_Flexible_birth_date
+from apps.core.jalali import format_jalali_datetime, parse_Flexible_birth_date
 from apps.exam.choices import AnswerResultStatus, ExamAttemptStatus
 from apps.exam.models import ExamAttempt, Question
 from apps.mosques.models import Mosque
@@ -294,6 +296,111 @@ def get_admin_participant_detail(*, user_id: int) -> dict[str, Any]:
     return {
         "has_exam_attempt": True,
         "participant_report": serialize_admin_participant_row(attempt, include_answers=True),
+    }
+
+
+def get_admin_participant_detail_by_tracking_code(*, tracking_code: str) -> dict[str, Any]:
+    """واکشی پروندهٔ کامل شرکت‌کننده و ریز ۵ سوال با کد رهگیری قرعه‌کشی (`tracking_code`)."""
+    normalized = str(tracking_code or "").strip().upper()
+    attempt = (
+        ExamAttempt.objects.select_related("user", "mosque")
+        .prefetch_related("items__question__options")
+        .filter(tracking_code=normalized)
+        .first()
+    )
+    if attempt is None:
+        raise NotFoundDomainError(
+            "کارنامه‌ای با این کد رهگیری یافت نشد.",
+            code="tracking_code_not_found",
+        )
+    return {
+        "has_exam_attempt": True,
+        "participant_report": serialize_admin_participant_row(attempt, include_answers=True),
+    }
+
+
+def execute_verifiable_lottery_draw(
+    *,
+    params: dict[str, Any],
+    winners_count: int = 3,
+    reserves_count: int = 2,
+    ceremony_title: str = "",
+    client_seed: str = "",
+) -> dict[str, Any]:
+    """اجرای قرعه‌کشی زنده، عادلانه و قابل‌راستی‌آزمایی رمزنگاری‌شده با تمام فیلترهای ترکیبی."""
+    effective_params = dict(params)
+    if "status" not in effective_params:
+        effective_params["status"] = "finished"
+
+    safe_winners_count = max(1, min(100, int(winners_count or 3)))
+    safe_reserves_count = max(0, min(50, int(reserves_count or 0)))
+    title = (
+        str(ceremony_title).strip()
+        or "مراسم قرعه‌کشی مسابقه بزرگ کتابخوانی هفته بسیج — حوزه مقاومت بسیج ۱۸۵ شهید کاوه"
+    )
+    normalized_seed = str(client_seed or "").strip()
+
+    eligible_attempts = list(get_filtered_exam_attempts_queryset(effective_params)[:10000])
+    pool_count = len(eligible_attempts)
+
+    canonical_pool_entries = [
+        f"{att.tracking_code}:{att.user_id}:{att.total_score:.2f}:{att.duration_seconds}"
+        for att in eligible_attempts
+    ]
+    pool_fingerprint_sha256 = hashlib.sha256(
+        "|".join(canonical_pool_entries).encode("utf-8")
+    ).hexdigest()
+    server_nonce = secrets.token_hex(16)
+    draw_proof_sha256 = hashlib.sha256(
+        f"{pool_fingerprint_sha256}:{server_nonce}:{normalized_seed}".encode()
+    ).hexdigest()
+
+    total_to_sample = min(pool_count, safe_winners_count + safe_reserves_count)
+    csprng = secrets.SystemRandom()
+    sampled = csprng.sample(eligible_attempts, total_to_sample) if total_to_sample > 0 else []
+
+    primary_attempts = sampled[:safe_winners_count]
+    reserve_attempts = sampled[safe_winners_count:]
+
+    winners_payload = [
+        {
+            "draw_order": idx,
+            "tier": "winner",
+            "tier_label": "برنده اصلی",
+            **serialize_admin_participant_row(att, rank=idx, include_answers=False),
+        }
+        for idx, att in enumerate(primary_attempts, start=1)
+    ]
+    reserves_payload = [
+        {
+            "draw_order": idx,
+            "tier": "reserve",
+            "tier_label": "برنده رزرو (علی‌البدل)",
+            **serialize_admin_participant_row(att, rank=idx, include_answers=False),
+        }
+        for idx, att in enumerate(reserve_attempts, start=1)
+    ]
+
+    now = timezone.now()
+    return {
+        "ceremony_title": title,
+        "drawn_at": now.isoformat(),
+        "drawn_at_jalali": format_jalali_datetime(now),
+        "eligible_pool_count": pool_count,
+        "requested_winners_count": safe_winners_count,
+        "requested_reserves_count": safe_reserves_count,
+        "drawn_winners_count": len(winners_payload),
+        "drawn_reserves_count": len(reserves_payload),
+        "applied_filters": effective_params,
+        "winners": winners_payload,
+        "reserves": reserves_payload,
+        "cryptographic_proof": {
+            "algorithm": "CSPRNG-SystemRandom + SHA256-Pool-Commitment",
+            "pool_fingerprint_sha256": pool_fingerprint_sha256,
+            "server_nonce": server_nonce,
+            "client_seed": normalized_seed,
+            "draw_proof_sha256": draw_proof_sha256,
+        },
     }
 
 

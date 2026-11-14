@@ -20,6 +20,8 @@ class PublicExamStatusSerializer(serializers.Serializer):
     window_state_label = serializers.CharField()
     can_participate = serializers.BooleanField()
     status_message = serializers.CharField()
+    server_time = serializers.CharField()
+    server_time_jalali = serializers.CharField()
     starts_at = serializers.CharField()
     starts_at_jalali = serializers.CharField()
     ends_at = serializers.CharField()

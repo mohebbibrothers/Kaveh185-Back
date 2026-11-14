@@ -17,6 +17,7 @@ from .views import (
     ExamStartAPIView,
     ExamSubmitAnswerAPIView,
     PublicExamStatusAPIView,
+    PublicLandingBootstrapAPIView,
     PublicReceiptVerifyAPIView,
 )
 
@@ -24,6 +25,7 @@ app_name = "exam"
 
 urlpatterns = [
     # مسیرهای عمومی و شرکت‌کنندگان
+    path("landing/", PublicLandingBootstrapAPIView.as_view(), name="landing-bootstrap"),
     path("status/", PublicExamStatusAPIView.as_view(), name="status"),
     path("start/", ExamStartAPIView.as_view(), name="start"),
     path("current/", ExamCurrentAttemptAPIView.as_view(), name="current"),

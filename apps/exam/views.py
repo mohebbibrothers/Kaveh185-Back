@@ -27,6 +27,7 @@ from .selectors import (
     get_attempt_by_tracking_code,
     get_or_create_exam_configuration,
     get_public_exam_status,
+    get_public_landing_bootstrap,
 )
 from .serializers import (
     ActiveAttemptOutputSerializer,
@@ -69,6 +70,27 @@ class PublicExamStatusAPIView(APIView):
         del request
         payload = get_public_exam_status()
         return success_response(data=payload)
+
+
+class PublicLandingBootstrapAPIView(APIView):
+    """بستهٔ یکپارچهٔ صفحهٔ اول مسابقه (وضعیت آزمون + فهرست کشویی ۱۷ مسجد + رنکینگ زندهٔ مساجد)."""
+
+    permission_classes = [AllowAny]
+    authentication_classes: list[Any] = []
+
+    @extend_schema(
+        tags=["Exam (Public & Participant)"],
+        summary="دریافت یکپارچهٔ تمام داده‌های صفحه اول و فرم ثبت‌نام در یک درخواست (Single-Request Bootstrap)",
+        responses={200: OpenApiTypes.OBJECT},
+    )
+    def get(self, request: Request) -> Response:
+        """بازگرداندن وضعیت آزمون، لیست کشویی مساجد و لیدربورد زنده در یک پاسخ واحد."""
+        del request
+        payload = get_public_landing_bootstrap()
+        return success_response(
+            data=payload,
+            message="داده‌های یکپارچهٔ صفحهٔ اول مسابقه کاوه ۱۸۵ با موفقیت دریافت شد.",
+        )
 
 
 class ExamStartAPIView(APIView):

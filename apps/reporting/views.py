@@ -18,13 +18,17 @@ from apps.core.responses import success_response
 
 from .excel_exporter import generate_multi_sheet_participants_excel
 from .selectors import (
+    execute_verifiable_lottery_draw,
     get_admin_participant_detail,
+    get_admin_participant_detail_by_tracking_code,
     get_filtered_exam_attempts_queryset,
     get_live_analytics_dashboard,
     serialize_admin_participant_row,
 )
 from .serializers import (
     AdminAnalyticsDashboardSerializer,
+    AdminLotteryDrawInputSerializer,
+    AdminLotteryDrawOutputSerializer,
     AdminParticipantExplorerItemSerializer,
 )
 
@@ -227,6 +231,90 @@ class AdminParticipantDetailAPIView(APIView):
         del request
         payload = get_admin_participant_detail(user_id=user_id)
         return success_response(data=payload)
+
+
+class AdminParticipantByTrackingCodeAPIView(APIView):
+    """مشاهدهٔ پرونده و ریز ۵ سوال یک شرکت‌کننده با کد رهگیری قرعه‌کشی (`tracking_code`)."""
+
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    @extend_schema(
+        tags=["Admin - Reporting, Lottery Explorer & Excel"],
+        summary="مشاهده پرونده و ریز ۵ سوال شرکت‌کننده با کد رهگیری قرعه‌کشی (ادمین)",
+        responses={200: OpenApiTypes.OBJECT},
+    )
+    def get(self, request: Request, tracking_code: str) -> Response:
+        """بازگرداندن پروندهٔ کامل شرکت‌کننده و ریز ۵ سوال با کد رهگیری."""
+        del request
+        payload = get_admin_participant_detail_by_tracking_code(tracking_code=tracking_code)
+        return success_response(data=payload)
+
+
+class AdminLotteryDrawAPIView(APIView):
+    """موتور اجرای قرعه‌کشی زنده و قابل‌راستی‌آزمایی رمزنگاری‌شده ویژهٔ مراسم حضوری هفته بسیج."""
+
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    @extend_schema(
+        tags=["Admin - Reporting, Lottery Explorer & Excel"],
+        summary="اجرای قرعه‌کشی زنده (CSPRNG + گواهی SHA-256) با اعمال تمام فیلترهای ترکیبی",
+        parameters=EXPLORER_FILTER_PARAMETERS,
+        request=AdminLotteryDrawInputSerializer,
+        responses={200: AdminLotteryDrawOutputSerializer},
+    )
+    def post(self, request: Request) -> Response:
+        """انتخاب تصادفی رمزنگاری‌شدهٔ برندگان اصلی و رزرو از میان جامعهٔ آماری فیلترشده."""
+        serializer = AdminLotteryDrawInputSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        vdata = serializer.validated_data
+
+        merged_params: dict[str, str | int | float] = dict(request.query_params.items())
+        for filter_key in (
+            "mosque_ids",
+            "mosque_id",
+            "exact_correct",
+            "min_correct",
+            "max_correct",
+            "min_score",
+            "max_score",
+            "min_duration",
+            "max_duration",
+            "min_age",
+            "max_age",
+        ):
+            val = vdata.get(filter_key)
+            if val is not None and str(val).strip() != "":
+                merged_params[filter_key] = val
+
+        result = execute_verifiable_lottery_draw(
+            params=merged_params,
+            winners_count=int(vdata.get("winners_count") or 3),
+            reserves_count=int(
+                vdata.get("reserves_count") if vdata.get("reserves_count") is not None else 2
+            ),
+            ceremony_title=str(vdata.get("ceremony_title") or ""),
+            client_seed=str(vdata.get("client_seed") or ""),
+        )
+
+        record_audit_log(
+            action=AuditAction.REPORT_EXPORTED,
+            resource_type="lottery_draw",
+            resource_id=result["cryptographic_proof"]["draw_proof_sha256"][:16],
+            user=request.user,
+            request=request,
+            extra_data={
+                "ceremony_title": result["ceremony_title"],
+                "eligible_pool_count": result["eligible_pool_count"],
+                "winners_tracking_codes": [w["tracking_code"] for w in result["winners"]],
+                "reserves_tracking_codes": [r["tracking_code"] for r in result["reserves"]],
+                "draw_proof_sha256": result["cryptographic_proof"]["draw_proof_sha256"],
+                "applied_filters": merged_params,
+            },
+        )
+        return success_response(
+            data=result,
+            message="قرعه‌کشی زنده با گواهی اثبات رمزنگاری‌شده با موفقیت انجام شد.",
+        )
 
 
 class AdminExcelExportAPIView(APIView):
