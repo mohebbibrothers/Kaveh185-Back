@@ -68,17 +68,43 @@ ok "IP عمومی: $IP"
 # ── ۲) بررسی اینکه zone روی همین cPanel است یا نه ───────────────────────────
 hd "۲/۴ · بررسی مالکیت zone"
 ZONE_HERE=0
+EXISTING_ADDR=""
+ZONE_JSON=""
 if [[ $HAVE_UAPI -eq 1 ]]; then
-  out="$(uapi --output=json DNS parse_zone zone="$ZONE" 2>/dev/null || true)"
-  # uapi یک پاکت JSON برمی‌گرداند: result.status=1 یعنی موفق. برای zone موجود،
-  # فیلد data آرایه‌ای از رکوردهاست. هر دو حالت را تشخیص می‌دهیم.
-  if [[ "$out" == *'"status":1'* || "$out" == *'"status": 1'* ]]; then ZONE_HERE=1; fi
-  if [[ "$out" == *'"errors":[]'* && "$out" == *'"data"'* ]]; then ZONE_HERE=1; fi
+  ZONE_JSON="$(uapi --output=json DNS parse_zone zone="$ZONE" 2>/dev/null || true)"
+  # پاکت uapi: {"apiversion":3,...,"result":{"status":1,"errors":[...],"data":[...]}}
+  # status=1 یعنی موفق. توجه: هرگز نباید روی کل متن دنبال نام زیردامنه بگردیم،
+  # چون خودِ کلید "apiversion" شامل رشتهٔ "api" است (باگ نسخهٔ قبلی).
+  if [[ "$ZONE_JSON" == *'"status":1'* || "$ZONE_JSON" == *'"status": 1'* ]]; then
+    ZONE_HERE=1
+  fi
+
   if [[ $ZONE_HERE -eq 1 ]]; then
     ok "zone «$ZONE» روی همین cPanel مدیریت می‌شود"
-    # آیا رکورد از قبل هست؟
-    if [[ "$out" == *"$NAME"* ]]; then
-      wr "به‌نظر می‌رسد رکورد «$NAME» از قبل وجود دارد — بررسی می‌کنیم."
+    # استخراج «آدرسِ موجود برای همین نام و از نوع A» به‌صورت دقیق
+    if command -v python3 >/dev/null 2>&1; then
+      EXISTING_ADDR="$(printf '%s' "$ZONE_JSON" | python3 -c '
+import json,sys
+name=sys.argv[1]
+try: j=json.load(sys.stdin)
+except Exception: sys.exit(0)
+rows=(j.get("result") or {}).get("data") or []
+if isinstance(rows,dict): rows=rows.get("payload") or []
+for r in rows:
+    if not isinstance(r,dict): continue
+    nm=str(r.get("record", r.get("name",""))).rstrip(".")
+    if nm in (name, name+".") and str(r.get("type","")).upper()=="A":
+        print(r.get("address") or r.get("record_value") or ""); break
+' "$NAME" 2>/dev/null || true)"
+    else
+      EXISTING_ADDR="$(printf '%s' "$ZONE_JSON" \
+        | grep -oE '"record"\s*:\s*"'"$NAME"'"\s*,\s*"ttl"\s*:\s*[0-9]+\s*,\s*"[a-z]+"\s*:\s*"IN"\s*,\s*"type"\s*:\s*"A"\s*,\s*"address"\s*:\s*"[0-9.]+"' \
+        | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
+    fi
+    if [[ -n "$EXISTING_ADDR" ]]; then
+      wr "رکورد A برای «$NAME» از قبل وجود دارد: $EXISTING_ADDR"
+    else
+      if_ "رکورد A برای «$NAME» وجود ندارد — ساخته می‌شود"
     fi
   else
     wr "این cPanel مالک zone نیست (یا uapi اجازه ندارد) — احتمالاً DNS دامنه دست ثبت‌کننده است."
@@ -93,7 +119,16 @@ MADE=0
 if [[ $DRY -eq 1 ]]; then
   wr "[dry-run] رکورد ساخته نشد. دستوری که اجرا می‌شد:"
   printf '    uapi DNS add_zone_record zone=%s type=A name=%s address=%s ttl=1440\n' "$ZONE" "$NAME" "$IP"
+elif [[ $HAVE_UAPI -eq 1 && $ZONE_HERE -eq 1 && "$EXISTING_ADDR" == "$IP" ]]; then
+  ok "رکورد از قبل دقیقاً درست است ($NAME → $IP) — نیازی به ساخت نیست"
+  MADE=1
 elif [[ $HAVE_UAPI -eq 1 && $ZONE_HERE -eq 1 ]]; then
+  if [[ -n "$EXISTING_ADDR" && "$EXISTING_ADDR" != "$IP" ]]; then
+    wr "رکورد موجود آدرس دیگری دارد ($EXISTING_ADDR) — ابتدا حذف/اصلاح کن، بعد این اسکریپت را بزن."
+    wr "دستور اصلاح:  uapi DNS remove_zone_record zone=$ZONE name=$NAME type=A"
+    wr "              uapi DNS add_zone_record zone=$ZONE type=A name=$NAME address=$IP ttl=1440"
+    exit 4
+  fi
   if_ "اجرای uapi DNS add_zone_record ..."
   if uapi --output=json DNS add_zone_record zone="$ZONE" type=A name="$NAME" address="$IP" ttl=1440 >/tmp/.k185_dns_out 2>&1; then
     MADE=1; ok "رکورد A ساخته شد"
