@@ -69,6 +69,10 @@ seed:
 	$(PYTHON) manage.py migrate
 	$(PYTHON) manage.py seed_kaveh185
 
+seed-demo:
+	$(PYTHON) manage.py migrate
+	$(PYTHON) manage.py seed_kaveh185 --with-demo-data
+
 test:
 	$(PYTHON) -m pytest --cov=apps --cov-report=term-missing --cov-fail-under=90
 

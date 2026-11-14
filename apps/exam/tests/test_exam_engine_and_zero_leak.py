@@ -364,3 +364,8 @@ def test_exam_status_admin_question_bank_crud_bulk_and_seed_command(
     assert batch_finish.status_code == 200
     summary_data = batch_finish.json()["data"]["summary"]
     assert summary_data["correct_count"] + summary_data["wrong_count"] == 5
+
+    from django.core.management import call_command
+
+    call_command("seed_kaveh185", "--with-demo-data")
+    assert ExamAttempt.objects.count() >= 17
