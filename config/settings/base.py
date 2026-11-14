@@ -238,9 +238,20 @@ SPECTACULAR_SETTINGS: dict[str, Any] = {
 
 # تنظیمات CORS و پروکسی
 CORS_ALLOW_ALL_ORIGINS = config("CORS_ALLOW_ALL_ORIGINS", default=False, cast=bool)
+# دامنه‌های مجاز مرورگر. `kaveh185.ir` (پیش‌نمایش Vercel) و دامنهٔ اصلی از روز اول
+# حاضرند تا هرگز Insecure CORS در کنسول مرورگر دیده نشود. پیش‌نمایش‌های خودکار
+# Vercel با الگوی wildcard در `CORS_ALLOWED_ORIGIN_REGEXES` پوشش داده می‌شوند.
 CORS_ALLOWED_ORIGINS: list[str] = config(
     "CORS_ALLOWED_ORIGINS",
-    default="http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173",
+    default=(
+        "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,"
+        "https://kaveh185.ir,https://www.kaveh185.ir"
+    ),
+    cast=Csv(),
+)
+CORS_ALLOWED_ORIGIN_REGEXES: list[str] = config(
+    "CORS_ALLOWED_ORIGIN_REGEXES",
+    default=r"^https://kaveh185(-[a-z0-9]+)*\.vercel\.app$",
     cast=Csv(),
 )
 TRUSTED_PROXY_CIDRS: list[str] = config(

@@ -1,0 +1,4114 @@
+openapi: 3.0.3
+info:
+  title: Kaveh185 Competition & Cultural Mobilization API
+  version: 1.0.0
+  description: مستندات جامع API بک‌اند سامانه مسابقه بزرگ فرهنگی و کتابخوانی هفته
+    بسیج — حوزه مقاومت بسیج ۱۸۵ شهید کاوه (پوشش ۱۷ مسجد، آزمون ۵ سواله چهارگزینه‌ای
+    تصادفی، کارنامه بدون افشای کلید، رتبه‌بندی زنده مساجد و کاوشگر قرعه‌کشی حضوری)
+paths:
+  /api/v1/:
+    get:
+      operationId: api_v1_discovery_retrieve
+      description: برگرداندن نقشهٔ مسیرهای کلیدی عمومی، شرکت‌کننده، ادمین و مستندات
+        Swagger/ReDoc.
+      summary: کاتالوگ کشف اندپوینت‌ها و مستندات سامانه کاوه ۱۸۵ (API Discovery)
+      tags:
+      - System & Health
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/admin/command-center/:
+    get:
+      operationId: admin_command_center_retrieve
+      description: بازگرداندن خلاصهٔ کامل عملیاتی، آماری و امنیتی سامانه.
+      summary: نمای یکپارچه مرکز فرماندهی ادمین در یک درخواست
+      tags:
+      - Admin - Command Center
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommandCenterSnapshot'
+          description: ''
+  /api/v1/admin/command-center/overview/:
+    get:
+      operationId: admin_command_center_overview_retrieve
+      description: بازگرداندن خلاصهٔ کامل عملیاتی، آماری و امنیتی سامانه.
+      summary: نمای یکپارچه مرکز فرماندهی ادمین در یک درخواست
+      tags:
+      - Admin - Command Center
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommandCenterSnapshot'
+          description: ''
+  /api/v1/audit-logs/admin/logs/:
+    get:
+      operationId: audit_logs_admin_logs_list
+      description: واکشی و صفحه‌بندی لاگ‌های حسابرسی.
+      summary: فهرست لاگ‌های حسابرسی (مخصوص ادمین)
+      tags:
+      - Admin - Audit & Forensics
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AuditLog'
+          description: ''
+  /api/v1/audit-logs/admin/logs/{audit_log_id}/:
+    get:
+      operationId: audit_logs_admin_logs_retrieve
+      description: واکشی رکورد حسابرسی با شناسه.
+      summary: دریافت جزئیات یک لاگ حسابرسی
+      parameters:
+      - in: path
+        name: audit_log_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Admin - Audit & Forensics
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditLog'
+          description: ''
+  /api/v1/audit-logs/admin/logs/export/:
+    get:
+      operationId: audit_logs_admin_logs_export_retrieve
+      description: تولید بستهٔ فارنزیک و ثبت رخداد خروجی در زنجیرهٔ حسابرسی.
+      summary: خروجی بستهٔ فارنزیک لاگ‌های حسابرسی
+      tags:
+      - Admin - Audit & Forensics
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+          description: ''
+  /api/v1/audit-logs/admin/logs/verify/:
+    get:
+      operationId: audit_logs_admin_logs_verify_retrieve
+      description: اجرای بررسی پیوستگی زنجیرهٔ هش.
+      summary: بررسی سلامت و عدم دستکاری زنجیرهٔ هش حسابرسی
+      tags:
+      - Admin - Audit & Forensics
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditChainVerification'
+          description: ''
+  /api/v1/auth/admin/risk-signals/:
+    get:
+      operationId: auth_admin_risk_signals_list
+      description: واکشی سیگنال‌های ریسک.
+      summary: فهرست سیگنال‌های ریسک امنیتی و ضدتقلب
+      tags:
+      - Admin - Users & Security
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AuthRiskSignal'
+          description: ''
+  /api/v1/auth/admin/risk-signals/{signal_id}/review/:
+    post:
+      operationId: auth_admin_risk_signals_review_create
+      description: علامت‌گذاری سیگنال ریسک به‌عنوان بررسی‌شده.
+      summary: ثبت نتیجهٔ بررسی سیگنال ریسک توسط ادمین
+      parameters:
+      - in: path
+        name: signal_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Admin - Users & Security
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RiskReviewInputRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RiskReviewInputRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RiskReviewInputRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthRiskSignal'
+          description: ''
+  /api/v1/auth/admin/users/:
+    get:
+      operationId: auth_admin_users_list
+      description: واکشی کاربران با فیلتر نقش، مسجد و جست‌وجو.
+      summary: فهرست کاربران و شرکت‌کنندگان (مخصوص ادمین)
+      tags:
+      - Admin - Users & Security
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserProfileOutput'
+          description: ''
+  /api/v1/auth/admin/users/{user_id}/:
+    get:
+      operationId: auth_admin_users_retrieve
+      description: دریافت اطلاعات کاربر و وضعیت آزمون او.
+      summary: مشاهدهٔ اطلاعات کامل یک کاربر توسط ادمین
+      parameters:
+      - in: path
+        name: user_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Admin - Users & Security
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfileOutput'
+          description: ''
+    patch:
+      operationId: auth_admin_users_partial_update
+      description: به‌روزرسانی اطلاعات کاربر توسط ادمین.
+      summary: ویرایش اطلاعات یا نقش کاربر توسط ادمین
+      parameters:
+      - in: path
+        name: user_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Admin - Users & Security
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedAdminUserUpdateInputRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedAdminUserUpdateInputRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedAdminUserUpdateInputRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfileOutput'
+          description: ''
+    delete:
+      operationId: auth_admin_users_destroy
+      description: غیرفعال‌سازی کاربر و بستن تمام نشست‌های فعال او.
+      summary: غیرفعال‌سازی حساب کاربر و ابطال نشست‌های او توسط ادمین
+      parameters:
+      - in: path
+        name: user_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Admin - Users & Security
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+          description: ''
+  /api/v1/auth/admin/users/{user_id}/sessions/:
+    get:
+      operationId: auth_admin_users_sessions_list
+      description: برگرداندن لیست نشست‌های فعال کاربر هدف.
+      summary: مشاهدهٔ نشست‌های فعال یک کاربر توسط ادمین
+      parameters:
+      - in: path
+        name: user_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Admin - Users & Security
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AuthSessionOutput'
+          description: ''
+  /api/v1/auth/admin/users/{user_id}/sessions/revoke-all/:
+    post:
+      operationId: auth_admin_users_sessions_revoke_all_create
+      description: بستن فوری تمام نشست‌های فعال کاربر هدف.
+      summary: ابطال تمامی نشست‌های یک کاربر توسط ادمین
+      parameters:
+      - in: path
+        name: user_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Admin - Users & Security
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+          description: ''
+  /api/v1/auth/login/password/:
+    post:
+      operationId: auth_login_password_create
+      description: احراز هویت با رمز عبور و صدور نشست.
+      summary: ورود با رمز عبور (مخصوص ادمین و اپراتورها)
+      tags:
+      - Authentication & Identity
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordLoginInputRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PasswordLoginInputRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PasswordLoginInputRequest'
+        required: true
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfileOutput'
+          description: ''
+  /api/v1/auth/logout/:
+    post:
+      operationId: auth_logout_create
+      description: ابطال نشست جاری و حذف کوکی‌های احراز هویت.
+      summary: خروج از حساب و ابطال نشست جاری
+      tags:
+      - Authentication & Identity
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+          description: ''
+  /api/v1/auth/logout-all/:
+    post:
+      operationId: auth_logout_all_create
+      description: ابطال تمام نشست‌های فعال کاربر.
+      summary: خروج از تمامی دستگاه‌ها (Revoke All Sessions)
+      tags:
+      - Authentication & Identity
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+          description: ''
+  /api/v1/auth/me/:
+    get:
+      operationId: auth_me_retrieve
+      description: برگرداندن پروفایل کاربر و وضعیت دقیق `exam_eligibility`.
+      summary: دریافت اطلاعات هویتی، مسجد انتخابی و وضعیت دکمهٔ ورود به آزمون
+      tags:
+      - Authentication & Identity
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfileOutput'
+          description: ''
+    patch:
+      operationId: auth_me_partial_update
+      description: به‌روزرسانی نام، تاریخ تولد یا مسجد انتخابی قبل از شروع آزمون.
+      summary: ویرایش اطلاعات پروفایل و مسجد (فقط تا پیش از شروع آزمون)
+      tags:
+      - Authentication & Identity
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedProfileUpdateInputRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedProfileUpdateInputRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedProfileUpdateInputRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfileOutput'
+          description: ''
+  /api/v1/auth/mfa/totp/confirm/:
+    post:
+      operationId: auth_mfa_totp_confirm_create
+      description: فعال‌سازی MFA پس از بررسی کد ۶ رقمی.
+      summary: تأیید کد TOTP و دریافت کدهای بازیابی یک‌بارمصرف
+      tags:
+      - Authentication & Identity
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MFACodeInputRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/MFACodeInputRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/MFACodeInputRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+          description: ''
+  /api/v1/auth/mfa/totp/setup/:
+    post:
+      operationId: auth_mfa_totp_setup_create
+      description: تولید راز Base32 و URI استاندارد Authenticator.
+      summary: تولید راز و لینک QR برای راه‌اندازی TOTP دومرحله‌ای
+      tags:
+      - Authentication & Identity
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+          description: ''
+  /api/v1/auth/mfa/verify/:
+    post:
+      operationId: auth_mfa_verify_create
+      description: بررسی کد MFA و ثبت زمان تأیید تازه روی نشست جاری.
+      summary: تأیید کد TOTP/بازیابی برای عملیات حساس (Step-Up MFA)
+      tags:
+      - Authentication & Identity
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MFACodeInputRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/MFACodeInputRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/MFACodeInputRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+          description: ''
+  /api/v1/auth/otp/request/:
+    post:
+      operationId: auth_otp_request_create
+      description: ایجاد چالش OTP و ارسال پیامک (با پاسخ یکسان جهت جلوگیری از شمارش
+        کاربران).
+      summary: درخواست ارسال کد تایید پیامکی (OTP)
+      tags:
+      - Authentication & Identity
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OTPRequestInputRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/OTPRequestInputRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/OTPRequestInputRequest'
+        required: true
+      security:
+      - {}
+      responses:
+        '202':
+          content:
+            application/json:
+              schema:
+                type: object
+          description: ''
+  /api/v1/auth/otp/verify/:
+    post:
+      operationId: auth_otp_verify_create
+      description: بررسی کد OTP و صدور توکن‌های JWT مقید به نشست.
+      summary: تأیید کد OTP و دریافت توکن نشست
+      tags:
+      - Authentication & Identity
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OTPVerifyInputRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/OTPVerifyInputRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/OTPVerifyInputRequest'
+        required: true
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfileOutput'
+          description: ''
+  /api/v1/auth/register/:
+    post:
+      operationId: auth_register_create
+      description: ثبت اطلاعات هویتی، بررسی یکتایی کدملی و شماره تماس، و صدور نشست
+        یا ارسال OTP.
+      summary: ثبت‌نام شرکت‌کننده، انتخاب مسجد و آماده‌سازی ورود به آزمون
+      tags:
+      - Authentication & Identity
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ParticipantRegistrationInputRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ParticipantRegistrationInputRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ParticipantRegistrationInputRequest'
+        required: true
+      security:
+      - {}
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfileOutput'
+          description: ''
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfileOutput'
+          description: ''
+  /api/v1/auth/sessions/:
+    get:
+      operationId: auth_sessions_list
+      description: برگرداندن لیست نشست‌های فعال کاربر با مشخص کردن نشست فعلی.
+      summary: فهرست نشست‌ها و دستگاه‌های فعال من
+      tags:
+      - Authentication & Identity
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AuthSessionOutput'
+          description: ''
+  /api/v1/auth/sessions/{session_id}/revoke/:
+    post:
+      operationId: auth_sessions_revoke_create
+      description: ابطال نشست مشخص‌شده.
+      summary: لغو یک نشست فعال با شناسه
+      parameters:
+      - in: path
+        name: session_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - Authentication & Identity
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSessionOutput'
+          description: ''
+  /api/v1/auth/signup/:
+    post:
+      operationId: auth_signup_create
+      description: هدایت به ثبت‌نام اصلی همراه با درج هدرهای Deprecation و Link.
+      summary: مسیر قدیمی ثبت‌نام (Deprecated — از /api/v1/auth/register/ استفاده
+        کنید)
+      tags:
+      - Authentication & Identity
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ParticipantRegistrationInputRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ParticipantRegistrationInputRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ParticipantRegistrationInputRequest'
+        required: true
+      security:
+      - {}
+      deprecated: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfileOutput'
+          description: ''
+  /api/v1/auth/token/refresh/:
+    post:
+      operationId: auth_token_refresh_create
+      description: صدور توکن Access جدید پس از بررسی عدم ابطال نشست.
+      summary: تمدید توکن دسترسی (Refresh Token)
+      tags:
+      - Authentication & Identity
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRefreshInputRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenRefreshInputRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TokenRefreshInputRequest'
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+          description: ''
+  /api/v1/command-center/:
+    get:
+      operationId: command_center_retrieve
+      description: بازگرداندن خلاصهٔ کامل عملیاتی، آماری و امنیتی سامانه.
+      summary: نمای یکپارچه مرکز فرماندهی ادمین در یک درخواست
+      tags:
+      - Admin - Command Center
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommandCenterSnapshot'
+          description: ''
+  /api/v1/command-center/overview/:
+    get:
+      operationId: command_center_overview_retrieve
+      description: بازگرداندن خلاصهٔ کامل عملیاتی، آماری و امنیتی سامانه.
+      summary: نمای یکپارچه مرکز فرماندهی ادمین در یک درخواست
+      tags:
+      - Admin - Command Center
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommandCenterSnapshot'
+          description: ''
+  /api/v1/core/:
+    get:
+      operationId: core_retrieve
+      description: برگرداندن متادیتای زمان اجرای سامانه.
+      summary: دریافت متادیتای سرویس و نسخهٔ قرارداد API
+      tags:
+      - System & Health
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceMetaResponse'
+          description: ''
+  /api/v1/core/bootstrap/:
+    get:
+      operationId: core_bootstrap_retrieve
+      description: بازگرداندن وضعیت آزمون، لیست کشویی مساجد و لیدربورد زنده در یک
+        پاسخ واحد.
+      summary: دریافت یکپارچهٔ تمام داده‌های صفحه اول و فرم ثبت‌نام در یک درخواست
+        (Single-Request Bootstrap)
+      tags:
+      - Exam (Public & Participant)
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/core/meta/:
+    get:
+      operationId: core_meta_retrieve
+      description: برگرداندن متادیتای زمان اجرای سامانه.
+      summary: دریافت متادیتای سرویس و نسخهٔ قرارداد API
+      tags:
+      - System & Health
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceMetaResponse'
+          description: ''
+  /api/v1/exam/admin/config/:
+    get:
+      operationId: exam_admin_config_retrieve
+      description: بازگرداندن تنظیمات فعلی آزمون.
+      summary: دریافت تنظیمات کامل آزمون توسط ادمین
+      tags:
+      - Admin - Exam & Question Bank
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminExamConfiguration'
+          description: ''
+    patch:
+      operationId: exam_admin_config_partial_update
+      description: ویرایش تنظیمات آزمون و باطل‌سازی فوری کش وضعیت عمومی آزمون.
+      summary: به‌روزرسانی زنده تنظیمات آزمون توسط ادمین
+      tags:
+      - Admin - Exam & Question Bank
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedAdminExamConfigurationRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedAdminExamConfigurationRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedAdminExamConfigurationRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminExamConfiguration'
+          description: ''
+  /api/v1/exam/admin/questions/:
+    get:
+      operationId: exam_admin_questions_list
+      description: بازگرداندن فهرست صفحه‌بندی‌شدهٔ سوالات بانک سوال.
+      summary: فهرست بانک سوالات چهارگزینه‌ای همراه با آمار پاسخگویی (ادمین)
+      parameters:
+      - in: query
+        name: difficulty
+        schema:
+          type: string
+      - in: query
+        name: is_active
+        schema:
+          type: string
+      - in: query
+        name: search
+        schema:
+          type: string
+      tags:
+      - Admin - Exam & Question Bank
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AdminQuestion'
+          description: ''
+    post:
+      operationId: exam_admin_questions_create
+      description: ایجاد یک سوال چهارگزینه‌ای جدید با ۴ گزینه و ۱ کلید صحیح.
+      summary: افزودن سوال چهارگزینه‌ای جدید به بانک سوال (ادمین)
+      tags:
+      - Admin - Exam & Question Bank
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminQuestionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AdminQuestionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AdminQuestionRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminQuestion'
+          description: ''
+  /api/v1/exam/admin/questions/{question_id}/:
+    get:
+      operationId: exam_admin_questions_retrieve
+      description: بازگرداندن جزئیات سوال و ۴ گزینهٔ آن.
+      summary: جزئیات یک سوال چهارگزینه‌ای در بانک سوال (ادمین)
+      parameters:
+      - in: path
+        name: question_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Admin - Exam & Question Bank
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminQuestion'
+          description: ''
+    patch:
+      operationId: exam_admin_questions_partial_update
+      description: ویرایش سوال؛ اگر گزینهٔ صحیح تغییر کند تمام کارنامه‌ها به‌صورت
+        خودکار بازتصحیح می‌شوند.
+      summary: ویرایش سوال یا کلید صحیح (همراه با بازتصحیح خودکار کارنامه‌ها)
+      parameters:
+      - in: path
+        name: question_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Admin - Exam & Question Bank
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedAdminQuestionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedAdminQuestionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedAdminQuestionRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminQuestion'
+          description: ''
+    delete:
+      operationId: exam_admin_questions_destroy
+      description: حذف نرم (غیرفعال‌سازی) یک سوال از چرخهٔ انتخاب سوالات جدید.
+      summary: غیرفعال‌سازی نرم سوال در بانک سوال (ادمین)
+      parameters:
+      - in: path
+        name: question_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Admin - Exam & Question Bank
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/exam/admin/questions/bulk/:
+    post:
+      operationId: exam_admin_questions_bulk_create
+      description: ایجاد چندین سوال چهارگزینه‌ای در یک درخواست.
+      summary: درج دسته‌ای سوالات چهارگزینه‌ای در بانک سوال (ادمین)
+      tags:
+      - Admin - Exam & Question Bank
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminBulkQuestionInputRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AdminBulkQuestionInputRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AdminBulkQuestionInputRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/exam/admin/questions/seed-defaults/:
+    post:
+      operationId: exam_admin_questions_seed_defaults_create
+      description: ایجاد سوالات نمونهٔ پیش‌فرض برای آماده‌سازی سریع بانک سوال.
+      summary: بارگذاری بانک سوالات پیش‌فرض هفته بسیج و شهید کاوه
+      tags:
+      - Admin - Exam & Question Bank
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/exam/admin/regrade/:
+    post:
+      operationId: exam_admin_regrade_create
+      description: بازمحاسبهٔ تعداد درست/غلط و امتیاز ترکیبی تمام شرکت‌کنندگان.
+      summary: بازتصحیح خودکار تمامی کارنامه‌ها بر اساس آخرین کلید سوالات (ادمین)
+      tags:
+      - Admin - Exam & Question Bank
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/exam/answer/:
+    post:
+      operationId: exam_answer_create
+      description: ثبت گزینهٔ انتخابی کاربر برای سوال شماره‌گذاری‌شده.
+      summary: ثبت پاسخ سوال (Auto-Save بدون افشای درست یا غلط بودن)
+      tags:
+      - Exam (Public & Participant)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitAnswerInputRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SubmitAnswerInputRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SubmitAnswerInputRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActiveAttemptOutput'
+          description: ''
+  /api/v1/exam/current/:
+    get:
+      operationId: exam_current_retrieve
+      description: بازگرداندن سوالات و پاسخ‌های ذخیره‌شده؛ یا صدور خودکار کارنامه
+        در صورت اتمام تایمر.
+      summary: دریافت سوالات و زمان باقی‌مانده آزمون جاری کاربر
+      tags:
+      - Exam (Public & Participant)
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActiveAttemptOutput'
+          description: ''
+  /api/v1/exam/finish/:
+    post:
+      operationId: exam_finish_create
+      description: نهایی‌سازی آزمون، محاسبهٔ امتیاز، به‌روزرسانی رتبهٔ مسجد و ارسال
+        پیامک تشکر.
+      summary: پایان آزمون و صدور کارنامه نهایی + ارسال پیامک تشکر
+      tags:
+      - Exam (Public & Participant)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FinishExamInputRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/FinishExamInputRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/FinishExamInputRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportCardOutput'
+          description: ''
+  /api/v1/exam/landing/:
+    get:
+      operationId: exam_landing_retrieve
+      description: بازگرداندن وضعیت آزمون، لیست کشویی مساجد و لیدربورد زنده در یک
+        پاسخ واحد.
+      summary: دریافت یکپارچهٔ تمام داده‌های صفحه اول و فرم ثبت‌نام در یک درخواست
+        (Single-Request Bootstrap)
+      tags:
+      - Exam (Public & Participant)
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/exam/receipt/{tracking_code}/:
+    get:
+      operationId: exam_receipt_retrieve
+      description: بررسی اصالت کد رهگیری و بازگرداندن اطلاعات خلاصهٔ رسید شرکت در
+        مسابقه.
+      summary: استعلام عمومی اصالت رسید کارنامه با کد رهگیری
+      parameters:
+      - in: path
+        name: tracking_code
+        schema:
+          type: string
+        required: true
+      tags:
+      - Exam (Public & Participant)
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportCardOutput'
+          description: ''
+  /api/v1/exam/report-card/:
+    get:
+      operationId: exam_report_card_retrieve
+      description: بازگرداندن کارنامهٔ کاربر؛ اگر تایمر آزمون باز تمام شده باشد ابتدا
+        خودکار نهایی می‌شود.
+      summary: دریافت کارنامه نهایی شرکت‌کننده جاری
+      tags:
+      - Exam (Public & Participant)
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportCardOutput'
+          description: ''
+  /api/v1/exam/start/:
+    post:
+      operationId: exam_start_create
+      description: ایجاد جلسهٔ آزمون ۵ سواله با تصادفی‌سازی دوگانه یا بازگرداندن جلسهٔ
+        فعال.
+      summary: ورود به آزمون ۵ سواله (شروع تایمر یا ادامه آزمون باز)
+      tags:
+      - Exam (Public & Participant)
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActiveAttemptOutput'
+          description: ''
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActiveAttemptOutput'
+          description: ''
+  /api/v1/exam/status/:
+    get:
+      operationId: exam_status_retrieve
+      description: بازگرداندن وضعیت لحظه‌ای پنجرهٔ زمانی آزمون و تنظیمات عمومی مسابقه.
+      summary: وضعیت بازه زمانی آزمون (به زودی / فعال / پایان مهلت)
+      tags:
+      - Exam (Public & Participant)
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicExamStatus'
+          description: ''
+  /api/v1/health/:
+    get:
+      operationId: health_retrieve
+      description: پاسخ سریع Liveness.
+      summary: بررسی زنده بودن سرویس (Liveness)
+      tags:
+      - System & Health
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BasicHealth'
+          description: ''
+  /api/v1/health/deep/:
+    get:
+      operationId: health_deep_retrieve
+      description: برگرداندن گزارش کامل سلامت دیتابیس، کش، مایگریشن‌ها، زنجیرهٔ حسابرسی
+        و پیامک.
+      summary: گزارش تشخیصی جامع سلامت زیرسیستم‌ها
+      tags:
+      - System & Health
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailedHealth'
+          description: ''
+  /api/v1/health/detailed/:
+    get:
+      operationId: health_detailed_retrieve
+      description: برگرداندن گزارش کامل سلامت دیتابیس، کش، مایگریشن‌ها، زنجیرهٔ حسابرسی
+        و پیامک.
+      summary: گزارش تشخیصی جامع سلامت زیرسیستم‌ها
+      tags:
+      - System & Health
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailedHealth'
+          description: ''
+  /api/v1/health/live/:
+    get:
+      operationId: health_live_retrieve
+      description: پاسخ سریع Liveness.
+      summary: بررسی زنده بودن سرویس (Liveness)
+      tags:
+      - System & Health
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BasicHealth'
+          description: ''
+  /api/v1/health/ready/:
+    get:
+      operationId: health_ready_retrieve
+      description: بررسی اتصال دیتابیس و کش برای ارکستریتور/Load Balancer.
+      summary: بررسی آمادگی سرویس (Readiness)
+      tags:
+      - System & Health
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BasicHealth'
+          description: ''
+  /api/v1/metrics/:
+    get:
+      operationId: metrics_retrieve
+      description: برگرداندن خروجی متنی متریک‌ها با بررسی توکن اختیاری در محیط تولید.
+      summary: دریافت متریک‌های Prometheus
+      tags:
+      - Observability
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: string
+          description: ''
+  /api/v1/mosques/:
+    get:
+      operationId: mosques_list
+      description: واکشی فهرست مساجد فعال از کش SWR.
+      summary: لیست کشویی مساجد فعال حوزه ۱۸۵ شهید کاوه (فرم ثبت‌نام)
+      tags:
+      - Mosques & Leaderboard
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MosqueDropdown'
+          description: ''
+  /api/v1/mosques/admin/:
+    get:
+      operationId: mosques_admin_list
+      description: مشاهدهٔ تمام مساجد (فعال و غیرفعال) با امکان جست‌وجو.
+      summary: فهرست تمام مساجد (مخصوص ادمین)
+      tags:
+      - Admin - Mosques
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AdminMosque'
+          description: ''
+    post:
+      operationId: mosques_admin_create
+      description: ثبت مسجد جدید در سامانه.
+      summary: ایجاد مسجد جدید توسط ادمین
+      tags:
+      - Admin - Mosques
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminMosqueRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AdminMosqueRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AdminMosqueRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminMosque'
+          description: ''
+  /api/v1/mosques/admin/{mosque_id}/:
+    get:
+      operationId: mosques_admin_retrieve
+      description: واکشی مسجد با شناسه.
+      summary: مشاهدهٔ جزئیات یک مسجد (مخصوص ادمین)
+      parameters:
+      - in: path
+        name: mosque_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Admin - Mosques
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminMosque'
+          description: ''
+    patch:
+      operationId: mosques_admin_partial_update
+      description: به‌روزرسانی فیلدهای مسجد.
+      summary: ویرایش اطلاعات مسجد توسط ادمین
+      parameters:
+      - in: path
+        name: mosque_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Admin - Mosques
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedAdminMosqueRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedAdminMosqueRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedAdminMosqueRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminMosque'
+          description: ''
+    delete:
+      operationId: mosques_admin_destroy
+      description: غیرفعال‌سازی نرم یک مسجد.
+      summary: غیرفعال‌سازی (حذف نرم) مسجد توسط ادمین
+      parameters:
+      - in: path
+        name: mosque_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Admin - Mosques
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+          description: ''
+  /api/v1/mosques/admin/seed-defaults/:
+    post:
+      operationId: mosques_admin_seed_defaults_create
+      description: فراخوانی سرویس ایجاد ۱۷ مسجد پیش‌فرض.
+      summary: بارگذاری ۱۷ مسجد پیش‌فرض حوزه ۱۸۵ شهید کاوه
+      tags:
+      - Admin - Mosques
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+          description: ''
+  /api/v1/mosques/leaderboard/:
+    get:
+      operationId: mosques_leaderboard_retrieve
+      description: محاسبه و نمایش رتبهٔ هر مسجد بر اساس تعداد مشارکت‌کنندگان.
+      summary: رنکینگ و جدول رقابت لحظه‌ای مشارکت مساجد
+      tags:
+      - Mosques & Leaderboard
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MosqueLeaderboardSnapshot'
+          description: ''
+  /api/v1/notifications/admin/outbox/flush/:
+    post:
+      operationId: notifications_admin_outbox_flush_create
+      description: پردازش پیام‌های در صف Outbox.
+      summary: پردازش و ارسال پیام‌های در انتظار در صف Outbox
+      tags:
+      - Admin - Notifications & SMS
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/notifications/admin/send-test/:
+    post:
+      operationId: notifications_admin_send_test_create
+      description: ارسال پیامک به شماره موبایل مشخص‌شده.
+      summary: ارسال پیامک تستی یا اطلاع‌رسانی توسط ادمین
+      tags:
+      - Admin - Notifications & SMS
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminSendTestSMSInputRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AdminSendTestSMSInputRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AdminSendTestSMSInputRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SMSDeliveryLog'
+          description: ''
+  /api/v1/notifications/admin/sms-logs/:
+    get:
+      operationId: notifications_admin_sms_logs_list
+      description: بازگرداندن فهرست صفحه‌بندی‌شدهٔ لاگ پیامک‌ها.
+      summary: فهرست لاگ پیامک‌های ارسالی (OTP و تشکر پایان آزمون)
+      parameters:
+      - in: query
+        name: category
+        schema:
+          type: string
+      - in: query
+        name: search
+        schema:
+          type: string
+      - in: query
+        name: status
+        schema:
+          type: string
+      tags:
+      - Admin - Notifications & SMS
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SMSDeliveryLog'
+          description: ''
+  /api/v1/reporting/admin/dashboard/:
+    get:
+      operationId: reporting_admin_dashboard_retrieve
+      description: بازگرداندن آمار جامع لحظه‌ای سامانه.
+      summary: داشبورد آماری زنده (کلی، به تفکیک ۱۷ مسجد، رده سنی و تحلیل سوالات)
+      tags:
+      - Admin - Reporting, Lottery Explorer & Excel
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminAnalyticsDashboard'
+          description: ''
+  /api/v1/reporting/admin/export.xlsx:
+    get:
+      operationId: reporting_admin_export.xlsx_retrieve
+      description: تولید و دانلود فایل اکسل چندبرگی همراه با ثبت در زنجیرهٔ لاگ ممیزی
+        و هدر SHA-256.
+      summary: دریافت فایل اکسل ۷ برگی راست‌به‌چپ (RTL .xlsx) برای قرعه‌کشی حضوری
+        و گزارش کامل
+      parameters:
+      - in: query
+        name: birth_date_from
+        schema:
+          type: string
+        description: تاریخ تولد از (شمسی `1380/01/01` یا میلادی `2001-03-21`)
+      - in: query
+        name: birth_date_to
+        schema:
+          type: string
+        description: تاریخ تولد تا (شمسی یا میلادی)
+      - in: query
+        name: exact_correct
+        schema:
+          type: integer
+        description: تعداد دقیق پاسخ درست (۰ تا ۵)
+      - in: query
+        name: include_answers
+        schema:
+          type: boolean
+        description: 'آیا ریز پاسخ ۵ سوال هر نفر هم در فهرست بازگردانده شود؟ (پیش‌فرض:
+          `true`)'
+      - in: query
+        name: max_age
+        schema:
+          type: integer
+        description: حداکثر سن شرکت‌کننده به سال (مثلاً `25`)
+      - in: query
+        name: max_correct
+        schema:
+          type: integer
+        description: حداکثر تعداد پاسخ درست
+      - in: query
+        name: max_duration
+        schema:
+          type: integer
+        description: حداکثر مدت زمان آزمون (ثانیه)
+      - in: query
+        name: max_score
+        schema:
+          type: number
+          format: double
+        description: حداکثر امتیاز کل نهایی
+      - in: query
+        name: max_unanswered
+        schema:
+          type: integer
+        description: حداکثر تعداد سوالات بی‌پاسخ
+      - in: query
+        name: max_wrong
+        schema:
+          type: integer
+        description: حداکثر تعداد پاسخ غلط
+      - in: query
+        name: min_age
+        schema:
+          type: integer
+        description: حداقل سن شرکت‌کننده به سال (مثلاً `12`)
+      - in: query
+        name: min_correct
+        schema:
+          type: integer
+        description: حداقل تعداد پاسخ درست
+      - in: query
+        name: min_duration
+        schema:
+          type: integer
+        description: حداقل مدت زمان آزمون (ثانیه)
+      - in: query
+        name: min_score
+        schema:
+          type: number
+          format: double
+        description: حداقل امتیاز کل نهایی
+      - in: query
+        name: min_unanswered
+        schema:
+          type: integer
+        description: حداقل تعداد سوالات بی‌پاسخ
+      - in: query
+        name: min_wrong
+        schema:
+          type: integer
+        description: حداقل تعداد پاسخ غلط
+      - in: query
+        name: mosque_id
+        schema:
+          type: integer
+        description: فیلتر شناسه تک‌مسجد
+      - in: query
+        name: mosque_ids
+        schema:
+          type: string
+        description: فیلتر یک یا چند مسجد هم‌زمان با کاما (مثلاً `1,3,7`)
+      - in: query
+        name: ordering
+        schema:
+          type: string
+        description: 'مرتب‌سازی چندستونه پویا با کاما؛ فیلدهای مجاز: `-total_score`,
+          `total_score`, `-correct_count`, `correct_count`, `duration_seconds`, `-duration_seconds`,
+          `age`, `-age`, `birth_date`, `-birth_date`, `mosque_name`, `-mosque_name`,
+          `-completed_at`'
+      - in: query
+        name: search
+        schema:
+          type: string
+        description: جستجو روی نام، نام خانوادگی، موبایل، کد ملی یا کد رهگیری
+      - in: query
+        name: status
+        schema:
+          type: string
+        description: وضعیت آزمون (`finished`, `completed`, `timed_out`, `in_progress`)
+      tags:
+      - Admin - Reporting, Lottery Explorer & Excel
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: string
+                format: binary
+          description: ''
+  /api/v1/reporting/admin/lottery/draw/:
+    post:
+      operationId: reporting_admin_lottery_draw_create
+      description: انتخاب تصادفی رمزنگاری‌شدهٔ برندگان اصلی و رزرو از میان جامعهٔ
+        آماری فیلترشده.
+      summary: اجرای قرعه‌کشی زنده (CSPRNG + گواهی SHA-256) با اعمال تمام فیلترهای
+        ترکیبی
+      parameters:
+      - in: query
+        name: birth_date_from
+        schema:
+          type: string
+        description: تاریخ تولد از (شمسی `1380/01/01` یا میلادی `2001-03-21`)
+      - in: query
+        name: birth_date_to
+        schema:
+          type: string
+        description: تاریخ تولد تا (شمسی یا میلادی)
+      - in: query
+        name: exact_correct
+        schema:
+          type: integer
+        description: تعداد دقیق پاسخ درست (۰ تا ۵)
+      - in: query
+        name: include_answers
+        schema:
+          type: boolean
+        description: 'آیا ریز پاسخ ۵ سوال هر نفر هم در فهرست بازگردانده شود؟ (پیش‌فرض:
+          `true`)'
+      - in: query
+        name: max_age
+        schema:
+          type: integer
+        description: حداکثر سن شرکت‌کننده به سال (مثلاً `25`)
+      - in: query
+        name: max_correct
+        schema:
+          type: integer
+        description: حداکثر تعداد پاسخ درست
+      - in: query
+        name: max_duration
+        schema:
+          type: integer
+        description: حداکثر مدت زمان آزمون (ثانیه)
+      - in: query
+        name: max_score
+        schema:
+          type: number
+          format: double
+        description: حداکثر امتیاز کل نهایی
+      - in: query
+        name: max_unanswered
+        schema:
+          type: integer
+        description: حداکثر تعداد سوالات بی‌پاسخ
+      - in: query
+        name: max_wrong
+        schema:
+          type: integer
+        description: حداکثر تعداد پاسخ غلط
+      - in: query
+        name: min_age
+        schema:
+          type: integer
+        description: حداقل سن شرکت‌کننده به سال (مثلاً `12`)
+      - in: query
+        name: min_correct
+        schema:
+          type: integer
+        description: حداقل تعداد پاسخ درست
+      - in: query
+        name: min_duration
+        schema:
+          type: integer
+        description: حداقل مدت زمان آزمون (ثانیه)
+      - in: query
+        name: min_score
+        schema:
+          type: number
+          format: double
+        description: حداقل امتیاز کل نهایی
+      - in: query
+        name: min_unanswered
+        schema:
+          type: integer
+        description: حداقل تعداد سوالات بی‌پاسخ
+      - in: query
+        name: min_wrong
+        schema:
+          type: integer
+        description: حداقل تعداد پاسخ غلط
+      - in: query
+        name: mosque_id
+        schema:
+          type: integer
+        description: فیلتر شناسه تک‌مسجد
+      - in: query
+        name: mosque_ids
+        schema:
+          type: string
+        description: فیلتر یک یا چند مسجد هم‌زمان با کاما (مثلاً `1,3,7`)
+      - in: query
+        name: ordering
+        schema:
+          type: string
+        description: 'مرتب‌سازی چندستونه پویا با کاما؛ فیلدهای مجاز: `-total_score`,
+          `total_score`, `-correct_count`, `correct_count`, `duration_seconds`, `-duration_seconds`,
+          `age`, `-age`, `birth_date`, `-birth_date`, `mosque_name`, `-mosque_name`,
+          `-completed_at`'
+      - in: query
+        name: search
+        schema:
+          type: string
+        description: جستجو روی نام، نام خانوادگی، موبایل، کد ملی یا کد رهگیری
+      - in: query
+        name: status
+        schema:
+          type: string
+        description: وضعیت آزمون (`finished`, `completed`, `timed_out`, `in_progress`)
+      tags:
+      - Admin - Reporting, Lottery Explorer & Excel
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminLotteryDrawInputRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AdminLotteryDrawInputRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AdminLotteryDrawInputRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminLotteryDrawOutput'
+          description: ''
+  /api/v1/reporting/admin/participants/:
+    get:
+      operationId: reporting_admin_participants_list
+      description: فیلتر، مرتب‌سازی و صفحه‌بندی کارنامه‌ها همراه با ریز سوالات و پاسخ‌های
+        هر نفر.
+      summary: کاوشگر پیشرفته شرکت‌کنندگان با فیلتر هم‌زمان مسجد، نمره، زمان و سن
+        (ویژه قرعه‌کشی)
+      parameters:
+      - in: query
+        name: birth_date_from
+        schema:
+          type: string
+        description: تاریخ تولد از (شمسی `1380/01/01` یا میلادی `2001-03-21`)
+      - in: query
+        name: birth_date_to
+        schema:
+          type: string
+        description: تاریخ تولد تا (شمسی یا میلادی)
+      - in: query
+        name: exact_correct
+        schema:
+          type: integer
+        description: تعداد دقیق پاسخ درست (۰ تا ۵)
+      - in: query
+        name: include_answers
+        schema:
+          type: boolean
+        description: 'آیا ریز پاسخ ۵ سوال هر نفر هم در فهرست بازگردانده شود؟ (پیش‌فرض:
+          `true`)'
+      - in: query
+        name: max_age
+        schema:
+          type: integer
+        description: حداکثر سن شرکت‌کننده به سال (مثلاً `25`)
+      - in: query
+        name: max_correct
+        schema:
+          type: integer
+        description: حداکثر تعداد پاسخ درست
+      - in: query
+        name: max_duration
+        schema:
+          type: integer
+        description: حداکثر مدت زمان آزمون (ثانیه)
+      - in: query
+        name: max_score
+        schema:
+          type: number
+          format: double
+        description: حداکثر امتیاز کل نهایی
+      - in: query
+        name: max_unanswered
+        schema:
+          type: integer
+        description: حداکثر تعداد سوالات بی‌پاسخ
+      - in: query
+        name: max_wrong
+        schema:
+          type: integer
+        description: حداکثر تعداد پاسخ غلط
+      - in: query
+        name: min_age
+        schema:
+          type: integer
+        description: حداقل سن شرکت‌کننده به سال (مثلاً `12`)
+      - in: query
+        name: min_correct
+        schema:
+          type: integer
+        description: حداقل تعداد پاسخ درست
+      - in: query
+        name: min_duration
+        schema:
+          type: integer
+        description: حداقل مدت زمان آزمون (ثانیه)
+      - in: query
+        name: min_score
+        schema:
+          type: number
+          format: double
+        description: حداقل امتیاز کل نهایی
+      - in: query
+        name: min_unanswered
+        schema:
+          type: integer
+        description: حداقل تعداد سوالات بی‌پاسخ
+      - in: query
+        name: min_wrong
+        schema:
+          type: integer
+        description: حداقل تعداد پاسخ غلط
+      - in: query
+        name: mosque_id
+        schema:
+          type: integer
+        description: فیلتر شناسه تک‌مسجد
+      - in: query
+        name: mosque_ids
+        schema:
+          type: string
+        description: فیلتر یک یا چند مسجد هم‌زمان با کاما (مثلاً `1,3,7`)
+      - in: query
+        name: ordering
+        schema:
+          type: string
+        description: 'مرتب‌سازی چندستونه پویا با کاما؛ فیلدهای مجاز: `-total_score`,
+          `total_score`, `-correct_count`, `correct_count`, `duration_seconds`, `-duration_seconds`,
+          `age`, `-age`, `birth_date`, `-birth_date`, `mosque_name`, `-mosque_name`,
+          `-completed_at`'
+      - in: query
+        name: search
+        schema:
+          type: string
+        description: جستجو روی نام، نام خانوادگی، موبایل، کد ملی یا کد رهگیری
+      - in: query
+        name: status
+        schema:
+          type: string
+        description: وضعیت آزمون (`finished`, `completed`, `timed_out`, `in_progress`)
+      tags:
+      - Admin - Reporting, Lottery Explorer & Excel
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AdminParticipantExplorerItem'
+          description: ''
+  /api/v1/reporting/admin/participants/{user_id}/:
+    get:
+      operationId: reporting_admin_participants_retrieve
+      description: بازگرداندن پروندهٔ کامل شرکت‌کننده و ریز پاسخنامه.
+      summary: مشاهده مشخصات کامل، خلاصه کارنامه و ریز پاسخ‌های ۵ سوال یک شرکت‌کننده
+        (ادمین)
+      parameters:
+      - in: path
+        name: user_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Admin - Reporting, Lottery Explorer & Excel
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/reporting/admin/participants/by-tracking/{tracking_code}/:
+    get:
+      operationId: reporting_admin_participants_by_tracking_retrieve
+      description: بازگرداندن پروندهٔ کامل شرکت‌کننده و ریز ۵ سوال با کد رهگیری.
+      summary: مشاهده پرونده و ریز ۵ سوال شرکت‌کننده با کد رهگیری قرعه‌کشی (ادمین)
+      parameters:
+      - in: path
+        name: tracking_code
+        schema:
+          type: string
+        required: true
+      tags:
+      - Admin - Reporting, Lottery Explorer & Excel
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/reporting/dashboard/:
+    get:
+      operationId: reporting_dashboard_retrieve
+      description: بازگرداندن آمار جامع لحظه‌ای سامانه.
+      summary: داشبورد آماری زنده (کلی، به تفکیک ۱۷ مسجد، رده سنی و تحلیل سوالات)
+      tags:
+      - Admin - Reporting, Lottery Explorer & Excel
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminAnalyticsDashboard'
+          description: ''
+  /api/v1/reporting/export.xlsx:
+    get:
+      operationId: reporting_export.xlsx_retrieve
+      description: تولید و دانلود فایل اکسل چندبرگی همراه با ثبت در زنجیرهٔ لاگ ممیزی
+        و هدر SHA-256.
+      summary: دریافت فایل اکسل ۷ برگی راست‌به‌چپ (RTL .xlsx) برای قرعه‌کشی حضوری
+        و گزارش کامل
+      parameters:
+      - in: query
+        name: birth_date_from
+        schema:
+          type: string
+        description: تاریخ تولد از (شمسی `1380/01/01` یا میلادی `2001-03-21`)
+      - in: query
+        name: birth_date_to
+        schema:
+          type: string
+        description: تاریخ تولد تا (شمسی یا میلادی)
+      - in: query
+        name: exact_correct
+        schema:
+          type: integer
+        description: تعداد دقیق پاسخ درست (۰ تا ۵)
+      - in: query
+        name: include_answers
+        schema:
+          type: boolean
+        description: 'آیا ریز پاسخ ۵ سوال هر نفر هم در فهرست بازگردانده شود؟ (پیش‌فرض:
+          `true`)'
+      - in: query
+        name: max_age
+        schema:
+          type: integer
+        description: حداکثر سن شرکت‌کننده به سال (مثلاً `25`)
+      - in: query
+        name: max_correct
+        schema:
+          type: integer
+        description: حداکثر تعداد پاسخ درست
+      - in: query
+        name: max_duration
+        schema:
+          type: integer
+        description: حداکثر مدت زمان آزمون (ثانیه)
+      - in: query
+        name: max_score
+        schema:
+          type: number
+          format: double
+        description: حداکثر امتیاز کل نهایی
+      - in: query
+        name: max_unanswered
+        schema:
+          type: integer
+        description: حداکثر تعداد سوالات بی‌پاسخ
+      - in: query
+        name: max_wrong
+        schema:
+          type: integer
+        description: حداکثر تعداد پاسخ غلط
+      - in: query
+        name: min_age
+        schema:
+          type: integer
+        description: حداقل سن شرکت‌کننده به سال (مثلاً `12`)
+      - in: query
+        name: min_correct
+        schema:
+          type: integer
+        description: حداقل تعداد پاسخ درست
+      - in: query
+        name: min_duration
+        schema:
+          type: integer
+        description: حداقل مدت زمان آزمون (ثانیه)
+      - in: query
+        name: min_score
+        schema:
+          type: number
+          format: double
+        description: حداقل امتیاز کل نهایی
+      - in: query
+        name: min_unanswered
+        schema:
+          type: integer
+        description: حداقل تعداد سوالات بی‌پاسخ
+      - in: query
+        name: min_wrong
+        schema:
+          type: integer
+        description: حداقل تعداد پاسخ غلط
+      - in: query
+        name: mosque_id
+        schema:
+          type: integer
+        description: فیلتر شناسه تک‌مسجد
+      - in: query
+        name: mosque_ids
+        schema:
+          type: string
+        description: فیلتر یک یا چند مسجد هم‌زمان با کاما (مثلاً `1,3,7`)
+      - in: query
+        name: ordering
+        schema:
+          type: string
+        description: 'مرتب‌سازی چندستونه پویا با کاما؛ فیلدهای مجاز: `-total_score`,
+          `total_score`, `-correct_count`, `correct_count`, `duration_seconds`, `-duration_seconds`,
+          `age`, `-age`, `birth_date`, `-birth_date`, `mosque_name`, `-mosque_name`,
+          `-completed_at`'
+      - in: query
+        name: search
+        schema:
+          type: string
+        description: جستجو روی نام، نام خانوادگی، موبایل، کد ملی یا کد رهگیری
+      - in: query
+        name: status
+        schema:
+          type: string
+        description: وضعیت آزمون (`finished`, `completed`, `timed_out`, `in_progress`)
+      tags:
+      - Admin - Reporting, Lottery Explorer & Excel
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: string
+                format: binary
+          description: ''
+  /api/v1/reporting/lottery/:
+    get:
+      operationId: reporting_lottery_list
+      description: فیلتر، مرتب‌سازی و صفحه‌بندی کارنامه‌ها همراه با ریز سوالات و پاسخ‌های
+        هر نفر.
+      summary: کاوشگر پیشرفته شرکت‌کنندگان با فیلتر هم‌زمان مسجد، نمره، زمان و سن
+        (ویژه قرعه‌کشی)
+      parameters:
+      - in: query
+        name: birth_date_from
+        schema:
+          type: string
+        description: تاریخ تولد از (شمسی `1380/01/01` یا میلادی `2001-03-21`)
+      - in: query
+        name: birth_date_to
+        schema:
+          type: string
+        description: تاریخ تولد تا (شمسی یا میلادی)
+      - in: query
+        name: exact_correct
+        schema:
+          type: integer
+        description: تعداد دقیق پاسخ درست (۰ تا ۵)
+      - in: query
+        name: include_answers
+        schema:
+          type: boolean
+        description: 'آیا ریز پاسخ ۵ سوال هر نفر هم در فهرست بازگردانده شود؟ (پیش‌فرض:
+          `true`)'
+      - in: query
+        name: max_age
+        schema:
+          type: integer
+        description: حداکثر سن شرکت‌کننده به سال (مثلاً `25`)
+      - in: query
+        name: max_correct
+        schema:
+          type: integer
+        description: حداکثر تعداد پاسخ درست
+      - in: query
+        name: max_duration
+        schema:
+          type: integer
+        description: حداکثر مدت زمان آزمون (ثانیه)
+      - in: query
+        name: max_score
+        schema:
+          type: number
+          format: double
+        description: حداکثر امتیاز کل نهایی
+      - in: query
+        name: max_unanswered
+        schema:
+          type: integer
+        description: حداکثر تعداد سوالات بی‌پاسخ
+      - in: query
+        name: max_wrong
+        schema:
+          type: integer
+        description: حداکثر تعداد پاسخ غلط
+      - in: query
+        name: min_age
+        schema:
+          type: integer
+        description: حداقل سن شرکت‌کننده به سال (مثلاً `12`)
+      - in: query
+        name: min_correct
+        schema:
+          type: integer
+        description: حداقل تعداد پاسخ درست
+      - in: query
+        name: min_duration
+        schema:
+          type: integer
+        description: حداقل مدت زمان آزمون (ثانیه)
+      - in: query
+        name: min_score
+        schema:
+          type: number
+          format: double
+        description: حداقل امتیاز کل نهایی
+      - in: query
+        name: min_unanswered
+        schema:
+          type: integer
+        description: حداقل تعداد سوالات بی‌پاسخ
+      - in: query
+        name: min_wrong
+        schema:
+          type: integer
+        description: حداقل تعداد پاسخ غلط
+      - in: query
+        name: mosque_id
+        schema:
+          type: integer
+        description: فیلتر شناسه تک‌مسجد
+      - in: query
+        name: mosque_ids
+        schema:
+          type: string
+        description: فیلتر یک یا چند مسجد هم‌زمان با کاما (مثلاً `1,3,7`)
+      - in: query
+        name: ordering
+        schema:
+          type: string
+        description: 'مرتب‌سازی چندستونه پویا با کاما؛ فیلدهای مجاز: `-total_score`,
+          `total_score`, `-correct_count`, `correct_count`, `duration_seconds`, `-duration_seconds`,
+          `age`, `-age`, `birth_date`, `-birth_date`, `mosque_name`, `-mosque_name`,
+          `-completed_at`'
+      - in: query
+        name: search
+        schema:
+          type: string
+        description: جستجو روی نام، نام خانوادگی، موبایل، کد ملی یا کد رهگیری
+      - in: query
+        name: status
+        schema:
+          type: string
+        description: وضعیت آزمون (`finished`, `completed`, `timed_out`, `in_progress`)
+      tags:
+      - Admin - Reporting, Lottery Explorer & Excel
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AdminParticipantExplorerItem'
+          description: ''
+  /api/v1/reporting/lottery/draw/:
+    post:
+      operationId: reporting_lottery_draw_create
+      description: انتخاب تصادفی رمزنگاری‌شدهٔ برندگان اصلی و رزرو از میان جامعهٔ
+        آماری فیلترشده.
+      summary: اجرای قرعه‌کشی زنده (CSPRNG + گواهی SHA-256) با اعمال تمام فیلترهای
+        ترکیبی
+      parameters:
+      - in: query
+        name: birth_date_from
+        schema:
+          type: string
+        description: تاریخ تولد از (شمسی `1380/01/01` یا میلادی `2001-03-21`)
+      - in: query
+        name: birth_date_to
+        schema:
+          type: string
+        description: تاریخ تولد تا (شمسی یا میلادی)
+      - in: query
+        name: exact_correct
+        schema:
+          type: integer
+        description: تعداد دقیق پاسخ درست (۰ تا ۵)
+      - in: query
+        name: include_answers
+        schema:
+          type: boolean
+        description: 'آیا ریز پاسخ ۵ سوال هر نفر هم در فهرست بازگردانده شود؟ (پیش‌فرض:
+          `true`)'
+      - in: query
+        name: max_age
+        schema:
+          type: integer
+        description: حداکثر سن شرکت‌کننده به سال (مثلاً `25`)
+      - in: query
+        name: max_correct
+        schema:
+          type: integer
+        description: حداکثر تعداد پاسخ درست
+      - in: query
+        name: max_duration
+        schema:
+          type: integer
+        description: حداکثر مدت زمان آزمون (ثانیه)
+      - in: query
+        name: max_score
+        schema:
+          type: number
+          format: double
+        description: حداکثر امتیاز کل نهایی
+      - in: query
+        name: max_unanswered
+        schema:
+          type: integer
+        description: حداکثر تعداد سوالات بی‌پاسخ
+      - in: query
+        name: max_wrong
+        schema:
+          type: integer
+        description: حداکثر تعداد پاسخ غلط
+      - in: query
+        name: min_age
+        schema:
+          type: integer
+        description: حداقل سن شرکت‌کننده به سال (مثلاً `12`)
+      - in: query
+        name: min_correct
+        schema:
+          type: integer
+        description: حداقل تعداد پاسخ درست
+      - in: query
+        name: min_duration
+        schema:
+          type: integer
+        description: حداقل مدت زمان آزمون (ثانیه)
+      - in: query
+        name: min_score
+        schema:
+          type: number
+          format: double
+        description: حداقل امتیاز کل نهایی
+      - in: query
+        name: min_unanswered
+        schema:
+          type: integer
+        description: حداقل تعداد سوالات بی‌پاسخ
+      - in: query
+        name: min_wrong
+        schema:
+          type: integer
+        description: حداقل تعداد پاسخ غلط
+      - in: query
+        name: mosque_id
+        schema:
+          type: integer
+        description: فیلتر شناسه تک‌مسجد
+      - in: query
+        name: mosque_ids
+        schema:
+          type: string
+        description: فیلتر یک یا چند مسجد هم‌زمان با کاما (مثلاً `1,3,7`)
+      - in: query
+        name: ordering
+        schema:
+          type: string
+        description: 'مرتب‌سازی چندستونه پویا با کاما؛ فیلدهای مجاز: `-total_score`,
+          `total_score`, `-correct_count`, `correct_count`, `duration_seconds`, `-duration_seconds`,
+          `age`, `-age`, `birth_date`, `-birth_date`, `mosque_name`, `-mosque_name`,
+          `-completed_at`'
+      - in: query
+        name: search
+        schema:
+          type: string
+        description: جستجو روی نام، نام خانوادگی، موبایل، کد ملی یا کد رهگیری
+      - in: query
+        name: status
+        schema:
+          type: string
+        description: وضعیت آزمون (`finished`, `completed`, `timed_out`, `in_progress`)
+      tags:
+      - Admin - Reporting, Lottery Explorer & Excel
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminLotteryDrawInputRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AdminLotteryDrawInputRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AdminLotteryDrawInputRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminLotteryDrawOutput'
+          description: ''
+components:
+  schemas:
+    ActionEnum:
+      enum:
+      - user.registered
+      - user.logged_in
+      - user.updated
+      - user.role_changed
+      - session.revoked
+      - mfa.enrolled
+      - mfa.verified
+      - risk.reviewed
+      - mosque.created
+      - mosque.updated
+      - mosque.deleted
+      - mosque.seeded
+      - exam.config_updated
+      - question.created
+      - question.updated
+      - question.deleted
+      - exam.regraded
+      - exam.started
+      - exam.completed
+      - exam.timed_out
+      - report.exported
+      - audit.exported
+      type: string
+      description: |-
+        * `user.registered` - ثبت‌نام شرکت‌کننده
+        * `user.logged_in` - ورود کاربر
+        * `user.updated` - ویرایش اطلاعات کاربر
+        * `user.role_changed` - تغییر نقش کاربر
+        * `session.revoked` - ابطال نشست کاربری
+        * `mfa.enrolled` - فعال‌سازی تأیید دومرحله‌ای
+        * `mfa.verified` - تأیید دومرحله‌ای موفق
+        * `risk.reviewed` - بررسی سیگنال ریسک امنیتی
+        * `mosque.created` - ایجاد مسجد
+        * `mosque.updated` - ویرایش مسجد
+        * `mosque.deleted` - غیرفعال‌سازی مسجد
+        * `mosque.seeded` - بارگذاری اولیه مساجد حوزه ۱۸۵
+        * `exam.config_updated` - تغییر تنظیمات آزمون
+        * `question.created` - ایجاد سوال در بانک سوال
+        * `question.updated` - ویرایش سوال یا کلید
+        * `question.deleted` - غیرفعال‌سازی سوال
+        * `exam.regraded` - بازتصحیح کارنامه‌های آزمون
+        * `exam.started` - شروع آزمون توسط شرکت‌کننده
+        * `exam.completed` - پایان آزمون توسط شرکت‌کننده
+        * `exam.timed_out` - اتمام مهلت زمانی آزمون
+        * `report.exported` - خروجی اکسل گزارش شرکت‌کنندگان
+        * `audit.exported` - خروجی بسته فارنزیک حسابرسی
+    ActiveAttemptOutput:
+      type: object
+      description: ساختار کامل جلسهٔ در حال اجرای آزمون برای شرکت‌کننده.
+      properties:
+        attempt_id:
+          type: integer
+        tracking_code:
+          type: string
+        status:
+          type: string
+        started_at:
+          type: string
+        started_at_jalali:
+          type: string
+        expires_at:
+          type: string
+        remaining_seconds:
+          type: integer
+        duration_limit_seconds:
+          type: integer
+        total_questions:
+          type: integer
+        answered_count:
+          type: integer
+        unanswered_count:
+          type: integer
+        all_answered:
+          type: boolean
+        current_question_number:
+          type: integer
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActiveAttemptQuestionSafe'
+      required:
+      - all_answered
+      - answered_count
+      - attempt_id
+      - current_question_number
+      - duration_limit_seconds
+      - expires_at
+      - questions
+      - remaining_seconds
+      - started_at
+      - started_at_jalali
+      - status
+      - total_questions
+      - tracking_code
+      - unanswered_count
+    ActiveAttemptQuestionSafe:
+      type: object
+      description: سوال تخصیص‌یافته به شرکت‌کننده در حین آزمون (بدون افشای کلید).
+      properties:
+        question_number:
+          type: integer
+        question_text:
+          type: string
+        chapter:
+          type: string
+        selected_position:
+          type: integer
+          nullable: true
+        is_answered:
+          type: boolean
+        options:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuestionOptionSafe'
+      required:
+      - chapter
+      - is_answered
+      - options
+      - question_number
+      - question_text
+      - selected_position
+    AdminAnalyticsDashboard:
+      type: object
+      description: ساختار خروجی داشبورد آماری زنده برای پنل ادمین.
+      properties:
+        overview:
+          type: object
+          additionalProperties: {}
+        correct_count_distribution:
+          type: object
+          additionalProperties: {}
+        age_groups_distribution:
+          type: object
+          additionalProperties: {}
+        mosques_ranking_and_analytics:
+          type: array
+          items: {}
+        question_bank_analytics:
+          type: array
+          items: {}
+      required:
+      - age_groups_distribution
+      - correct_count_distribution
+      - mosques_ranking_and_analytics
+      - overview
+      - question_bank_analytics
+    AdminBulkQuestionInputRequest:
+      type: object
+      description: ورودی درج دسته‌ای سوالات چهارگزینه‌ای توسط ادمین.
+      properties:
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminQuestionRequest'
+      required:
+      - questions
+    AdminExamConfiguration:
+      type: object
+      description: سریالایزر مشاهده و ویرایش کامل تنظیمات زندهٔ آزمون توسط ادمین.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        title:
+          type: string
+          title: عنوان مسابقه
+          maxLength: 200
+        book_title:
+          type: string
+          title: نام کتاب مسابقه
+          maxLength: 200
+        organizer_name:
+          type: string
+          title: برگزارکننده
+          maxLength: 160
+        description:
+          type: string
+          title: توضیحات مسابقه
+        starts_at:
+          type: string
+          format: date-time
+          title: زمان شروع مهلت آزمون
+        ends_at:
+          type: string
+          format: date-time
+          title: زمان پایان مهلت آزمون
+        is_manually_open:
+          type: boolean
+          title: فعال بودن دستی آزمون توسط ادمین
+        window_state:
+          type: string
+          description: محاسبهٔ وضعیت فعلی پنجرهٔ زمانی.
+          readOnly: true
+        duration_seconds:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+          title: مدت زمان آزمون برای هر شرکت‌کننده (ثانیه)
+        questions_per_attempt:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+          title: تعداد سوالات تصادفی در هر آزمون
+        require_otp_before_exam:
+          type: boolean
+          title: الزام تایید OTP پیامکی پیش از شروع آزمون
+        points_per_correct:
+          type: number
+          format: double
+          title: امتیاز هر پاسخ درست
+        points_per_wrong:
+          type: number
+          format: double
+          title: امتیاز/نمره منفی هر پاسخ غلط
+        max_time_bonus:
+          type: number
+          format: double
+          title: حداکثر پاداش سرعت پاسخگویی
+        thank_you_sms_enabled:
+          type: boolean
+          title: ارسال پیامک تشکر و کانال‌ها پس از پایان آزمون
+        thank_you_sms_template:
+          type: string
+          title: قالب پیامک تشکر پایان آزمون
+        communication_channels:
+          title: کانال‌های ارتباطی و تبلیغاتی حوزه ۱۸۵
+        policy_version:
+          type: integer
+          readOnly: true
+          title: نسخه سیاست آزمون
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: تاریخ به‌روزرسانی
+      required:
+      - id
+      - policy_version
+      - updated_at
+      - window_state
+    AdminLotteryDrawInputRequest:
+      type: object
+      description: ورودی اجرای قرعه‌کشی زنده و قابل‌راستی‌آزمایی رمزنگاری‌شده با پشتیبانی
+        از تمام فیلترها.
+      properties:
+        winners_count:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 3
+        reserves_count:
+          type: integer
+          maximum: 50
+          minimum: 0
+          default: 2
+        ceremony_title:
+          type: string
+          maxLength: 240
+        client_seed:
+          type: string
+          maxLength: 120
+        mosque_ids:
+          type: string
+        mosque_id:
+          type: integer
+          nullable: true
+        exact_correct:
+          type: integer
+          nullable: true
+        min_correct:
+          type: integer
+          nullable: true
+        max_correct:
+          type: integer
+          nullable: true
+        min_score:
+          type: number
+          format: double
+          nullable: true
+        max_score:
+          type: number
+          format: double
+          nullable: true
+        min_duration:
+          type: integer
+          nullable: true
+        max_duration:
+          type: integer
+          nullable: true
+        min_age:
+          type: integer
+          nullable: true
+        max_age:
+          type: integer
+          nullable: true
+    AdminLotteryDrawOutput:
+      type: object
+      description: خروجی مراسم قرعه‌کشی زنده همراه با گواهی اثبات رمزنگاری‌شده SHA-256.
+      properties:
+        ceremony_title:
+          type: string
+        drawn_at:
+          type: string
+        drawn_at_jalali:
+          type: string
+        eligible_pool_count:
+          type: integer
+        requested_winners_count:
+          type: integer
+        requested_reserves_count:
+          type: integer
+        drawn_winners_count:
+          type: integer
+        drawn_reserves_count:
+          type: integer
+        applied_filters:
+          type: object
+          additionalProperties: {}
+        winners:
+          type: array
+          items: {}
+        reserves:
+          type: array
+          items: {}
+        cryptographic_proof:
+          type: object
+          additionalProperties: {}
+      required:
+      - applied_filters
+      - ceremony_title
+      - cryptographic_proof
+      - drawn_at
+      - drawn_at_jalali
+      - drawn_reserves_count
+      - drawn_winners_count
+      - eligible_pool_count
+      - requested_reserves_count
+      - requested_winners_count
+      - reserves
+      - winners
+    AdminMosque:
+      type: object
+      description: سریالایزر کامل مسجد برای پنل مدیریت ادمین.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        code:
+          type: string
+          title: کد مسجد
+          maxLength: 32
+        name:
+          type: string
+          title: نام مسجد
+          maxLength: 160
+        neighborhood:
+          type: string
+          title: محله / محدوده
+          maxLength: 160
+        address:
+          type: string
+          title: نشانی
+          maxLength: 300
+        imam_name:
+          type: string
+          title: نام امام جماعت
+          maxLength: 120
+        commander_name:
+          type: string
+          title: نام فرمانده پایگاه بسیج
+          maxLength: 120
+        contact_phone:
+          type: string
+          title: تلفن هماهنگی
+          maxLength: 24
+        target_participants:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+          title: هدف‌گذاری تعداد مشارکت
+        display_order:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+          title: ترتیب نمایش
+        registered_count:
+          type: integer
+          readOnly: true
+          title: تعداد ثبت‌نام‌کنندگان
+        completed_exam_count:
+          type: integer
+          readOnly: true
+          title: تعداد تکمیل‌کنندگان آزمون
+        is_active:
+          type: boolean
+          title: فعال
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: تاریخ ایجاد
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: تاریخ به‌روزرسانی
+      required:
+      - code
+      - completed_exam_count
+      - created_at
+      - id
+      - name
+      - registered_count
+      - updated_at
+    AdminMosqueRequest:
+      type: object
+      description: سریالایزر کامل مسجد برای پنل مدیریت ادمین.
+      properties:
+        code:
+          type: string
+          minLength: 1
+          title: کد مسجد
+          maxLength: 32
+        name:
+          type: string
+          minLength: 1
+          title: نام مسجد
+          maxLength: 160
+        neighborhood:
+          type: string
+          title: محله / محدوده
+          maxLength: 160
+        address:
+          type: string
+          title: نشانی
+          maxLength: 300
+        imam_name:
+          type: string
+          title: نام امام جماعت
+          maxLength: 120
+        commander_name:
+          type: string
+          title: نام فرمانده پایگاه بسیج
+          maxLength: 120
+        contact_phone:
+          type: string
+          title: تلفن هماهنگی
+          maxLength: 24
+        target_participants:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+          title: هدف‌گذاری تعداد مشارکت
+        display_order:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+          title: ترتیب نمایش
+        is_active:
+          type: boolean
+          title: فعال
+      required:
+      - code
+      - name
+    AdminParticipantExplorerItem:
+      type: object
+      description: ساختار خروجی هر سطر در کاوشگر چندفیلتره شرکت‌کنندگان برای قرعه‌کشی
+        حضوری.
+      properties:
+        rank:
+          type: integer
+          nullable: true
+        attempt_id:
+          type: integer
+        tracking_code:
+          type: string
+        receipt_signature:
+          type: string
+        user:
+          type: object
+          additionalProperties: {}
+        mosque:
+          type: object
+          additionalProperties: {}
+        exam:
+          type: object
+          additionalProperties: {}
+        answers:
+          type: array
+          items: {}
+      required:
+      - attempt_id
+      - exam
+      - mosque
+      - rank
+      - receipt_signature
+      - tracking_code
+      - user
+    AdminQuestion:
+      type: object
+      description: سریالایزر کامل سوال چهارگزینه‌ای در بانک سوال مخصوص ادمین.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        text:
+          type: string
+          title: متن صورت سوال
+        chapter:
+          type: string
+          title: فصل / بخش کتاب
+          maxLength: 160
+        difficulty:
+          allOf:
+          - $ref: '#/components/schemas/DifficultyEnum'
+          title: سطح دشواری
+        explanation:
+          type: string
+          title: توضیح تشریحی (مخصوص ادمین)
+        is_active:
+          type: boolean
+          title: فعال
+        options:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminQuestionOption'
+        times_drawn:
+          type: integer
+          readOnly: true
+          default: 0
+        correct_answers_count:
+          type: integer
+          readOnly: true
+          default: 0
+        wrong_answers_count:
+          type: integer
+          readOnly: true
+          default: 0
+        unanswered_count_stat:
+          type: integer
+          readOnly: true
+          default: 0
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: تاریخ ایجاد
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: تاریخ به‌روزرسانی
+      required:
+      - correct_answers_count
+      - created_at
+      - id
+      - options
+      - text
+      - times_drawn
+      - unanswered_count_stat
+      - updated_at
+      - wrong_answers_count
+    AdminQuestionOption:
+      type: object
+      description: سریالایزر گزینهٔ سوال در بانک سوال مخصوص ادمین (شامل کلید صحیح
+        `is_correct`).
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        option_number:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+          title: شماره گزینه در بانک (۱ تا ۴)
+        text:
+          type: string
+          title: متن گزینه
+          maxLength: 500
+        is_correct:
+          type: boolean
+          title: گزینه صحیح است؟
+      required:
+      - id
+      - option_number
+      - text
+    AdminQuestionOptionRequest:
+      type: object
+      description: سریالایزر گزینهٔ سوال در بانک سوال مخصوص ادمین (شامل کلید صحیح
+        `is_correct`).
+      properties:
+        option_number:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+          title: شماره گزینه در بانک (۱ تا ۴)
+        text:
+          type: string
+          minLength: 1
+          title: متن گزینه
+          maxLength: 500
+        is_correct:
+          type: boolean
+          title: گزینه صحیح است؟
+      required:
+      - option_number
+      - text
+    AdminQuestionRequest:
+      type: object
+      description: سریالایزر کامل سوال چهارگزینه‌ای در بانک سوال مخصوص ادمین.
+      properties:
+        text:
+          type: string
+          minLength: 1
+          title: متن صورت سوال
+        chapter:
+          type: string
+          title: فصل / بخش کتاب
+          maxLength: 160
+        difficulty:
+          allOf:
+          - $ref: '#/components/schemas/DifficultyEnum'
+          title: سطح دشواری
+        explanation:
+          type: string
+          title: توضیح تشریحی (مخصوص ادمین)
+        is_active:
+          type: boolean
+          title: فعال
+        options:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminQuestionOptionRequest'
+      required:
+      - options
+      - text
+    AdminSendTestSMSInputRequest:
+      type: object
+      description: قرارداد ارسال پیامک تستی یا اطلاع‌رسانی توسط ادمین.
+      properties:
+        recipient_phone:
+          type: string
+          minLength: 1
+          maxLength: 15
+        message_text:
+          type: string
+          minLength: 3
+          maxLength: 1000
+      required:
+      - message_text
+      - recipient_phone
+    AdminUserUpdateInputRoleEnum:
+      enum:
+      - participant
+      - operator
+      - admin
+      type: string
+      description: |-
+        * `participant` - participant
+        * `operator` - operator
+        * `admin` - admin
+    AuditChainVerification:
+      type: object
+      description: ساختار خروجی بررسی یکپارچگی زنجیرهٔ حسابرسی.
+      properties:
+        valid:
+          type: boolean
+        checked_count:
+          type: integer
+        broken_at_index:
+          type: integer
+          nullable: true
+        reason:
+          type: string
+          nullable: true
+      required:
+      - broken_at_index
+      - checked_count
+      - reason
+      - valid
+    AuditLog:
+      type: object
+      description: نمایش کامل یک رکورد حسابرسی همراه با زمان شمسی.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        chain_index:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+          title: شماره زنجیره
+        hash_version:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+          title: نسخه الگوریتم هش
+        previous_hash:
+          type: string
+          title: هش رکورد قبلی
+          maxLength: 64
+        event_hash:
+          type: string
+          title: هش این رخداد
+          maxLength: 64
+        user:
+          type: integer
+          nullable: true
+          title: کاربر کنشگر
+        actor_label:
+          type: string
+          title: عنوان کنشگر
+          maxLength: 160
+        action:
+          allOf:
+          - $ref: '#/components/schemas/ActionEnum'
+          title: نوع عملیات
+        resource_type:
+          type: string
+          title: نوع منبع
+          maxLength: 64
+        resource_id:
+          type: string
+          title: شناسه منبع
+          maxLength: 64
+        reason:
+          type: string
+          title: دلیل ثبت‌شده
+          maxLength: 300
+        ip_address:
+          type: string
+          title: آدرس IP
+          maxLength: 64
+        user_agent:
+          type: string
+          title: مرورگر/دستگاه
+          maxLength: 300
+        path:
+          type: string
+          title: مسیر HTTP
+          maxLength: 255
+        method:
+          type: string
+          title: متد HTTP
+          maxLength: 16
+        request_id:
+          type: string
+          title: شناسه درخواست
+          maxLength: 64
+        changes:
+          title: تغییرات
+        extra_data:
+          title: داده‌های تکمیلی
+        created_at:
+          type: string
+          format: date-time
+          title: زمان ثبت
+        created_at_jalali:
+          type: string
+          description: تبدیل زمان ایجاد به فرمت تاریخ و ساعت شمسی.
+          readOnly: true
+      required:
+      - action
+      - chain_index
+      - created_at_jalali
+      - event_hash
+      - id
+      - previous_hash
+      - resource_id
+      - resource_type
+    AuthRiskSignal:
+      type: object
+      description: سریالایزر نمایش سیگنال‌های ریسک امنیتی برای بررسی ادمین.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        user:
+          type: integer
+          nullable: true
+          title: کاربر مرتبط
+        user_phone:
+          type: string
+          nullable: true
+          description: شماره تماس کاربر مرتبط با سیگنال ریسک.
+          readOnly: true
+        user_full_name:
+          type: string
+          nullable: true
+          description: نام کامل کاربر مرتبط با سیگنال ریسک.
+          readOnly: true
+        signal_type:
+          allOf:
+          - $ref: '#/components/schemas/SignalTypeEnum'
+          title: نوع سیگنال
+        severity:
+          allOf:
+          - $ref: '#/components/schemas/SeverityEnum'
+          title: شدت ریسک
+        ip_address:
+          type: string
+          title: آدرس IP
+          maxLength: 64
+        details:
+          title: جزئیات فنی
+        is_reviewed:
+          type: boolean
+          title: بررسی‌شده توسط ادمین
+        reviewed_by:
+          type: integer
+          nullable: true
+          title: بررسی‌کننده
+        reviewed_at:
+          type: string
+          format: date-time
+          nullable: true
+          title: زمان بررسی
+        review_note:
+          type: string
+          title: یادداشت بررسی
+          maxLength: 300
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: تاریخ ایجاد
+      required:
+      - created_at
+      - id
+      - signal_type
+      - user_full_name
+      - user_phone
+    AuthSessionOutput:
+      type: object
+      description: نمایش اطلاعات نشست فعال کاربر.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        session_uid:
+          type: string
+          readOnly: true
+        device_label:
+          type: string
+          title: برچسب دستگاه
+          maxLength: 120
+        ip_address:
+          type: string
+          title: آدرس IP
+          maxLength: 64
+        network_prefix:
+          type: string
+          title: پیشوند شبکه
+          maxLength: 64
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: تاریخ ایجاد
+        last_seen_at:
+          type: string
+          format: date-time
+          title: آخرین فعالیت
+        mfa_verified_at:
+          type: string
+          format: date-time
+          nullable: true
+          title: زمان آخرین تأیید MFA
+        is_revoked:
+          type: boolean
+          title: باطل‌شده
+      required:
+      - created_at
+      - id
+      - session_uid
+    BasicHealth:
+      type: object
+      description: ساختار پاسخ سلامت پایه و Readiness.
+      properties:
+        status:
+          type: string
+          default: healthy
+        service:
+          type: string
+          default: kaveh185
+    CategoryEnum:
+      enum:
+      - otp
+      - thank_you
+      - announcement
+      type: string
+      description: |-
+        * `otp` - کد تایید یک‌بارمصرف (OTP)
+        * `thank_you` - پیامک تشکر پایان آزمون و لینک کانال‌ها
+        * `announcement` - اطلاع‌رسانی عمومی / قرعه‌کشی
+    CommandCenterSnapshot:
+      type: object
+      description: ساختار خروجی اسنپ‌شات ۳۶۰ درجه مرکز فرماندهی ادمین.
+      properties:
+        generated_at:
+          type: string
+        generated_at_jalali:
+          type: string
+        exam_status:
+          type: object
+          additionalProperties: {}
+        overview:
+          type: object
+          additionalProperties: {}
+        top_mosques:
+          type: array
+          items: {}
+        correct_count_distribution:
+          type: object
+          additionalProperties: {}
+        age_groups_distribution:
+          type: object
+          additionalProperties: {}
+        security_and_integrity:
+          type: object
+          additionalProperties: {}
+        infrastructure_and_outbox:
+          type: object
+          additionalProperties: {}
+        recent_audit_events:
+          type: array
+          items: {}
+      required:
+      - age_groups_distribution
+      - correct_count_distribution
+      - exam_status
+      - generated_at
+      - generated_at_jalali
+      - infrastructure_and_outbox
+      - overview
+      - recent_audit_events
+      - security_and_integrity
+      - top_mosques
+    DetailedHealth:
+      type: object
+      description: ساختار پاسخ سلامت جامع زیرسیستم‌ها.
+      properties:
+        overall_status:
+          type: string
+        service:
+          type: string
+        checks:
+          type: object
+          additionalProperties: {}
+      required:
+      - checks
+      - overall_status
+      - service
+    DifficultyEnum:
+      enum:
+      - easy
+      - medium
+      - hard
+      type: string
+      description: |-
+        * `easy` - ساده
+        * `medium` - متوسط
+        * `hard` - دشوار
+    FinishExamInputRequest:
+      type: object
+      description: قرارداد درخواست پایان آزمون (با امکان ارسال اختیاری آرایه پاسخ‌ها).
+      properties:
+        answers:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubmitAnswerInputRequest'
+    MFACodeInputRequest:
+      type: object
+      description: ورودی کد ६ رقمی TOTP یا کد بازیابی.
+      properties:
+        code:
+          type: string
+          minLength: 1
+          maxLength: 32
+      required:
+      - code
+    MosqueDropdown:
+      type: object
+      description: ساختار خروجی آیتم‌های لیست کشویی مساجد در فرم ثبت‌نام.
+      properties:
+        id:
+          type: integer
+        code:
+          type: string
+        name:
+          type: string
+        neighborhood:
+          type: string
+        display_order:
+          type: integer
+        completed_participants_count:
+          type: integer
+      required:
+      - code
+      - completed_participants_count
+      - display_order
+      - id
+      - name
+      - neighborhood
+    MosqueLeaderboardItem:
+      type: object
+      description: ساختار خروجی هر مسجد در جدول رنکینگ لحظه‌ای مشارکت.
+      properties:
+        rank:
+          type: integer
+        tier:
+          type: string
+        tier_label:
+          type: string
+        mosque_id:
+          type: integer
+        code:
+          type: string
+        name:
+          type: string
+        neighborhood:
+          type: string
+        imam_name:
+          type: string
+        commander_name:
+          type: string
+        completed_participants_count:
+          type: integer
+        registered_users_count:
+          type: integer
+        target_participants:
+          type: integer
+        target_progress_percent:
+          type: number
+          format: double
+        participation_share_percent:
+          type: number
+          format: double
+        average_score:
+          type: number
+          format: double
+        average_correct_answers:
+          type: number
+          format: double
+        average_duration_seconds:
+          type: number
+          format: double
+      required:
+      - average_correct_answers
+      - average_duration_seconds
+      - average_score
+      - code
+      - commander_name
+      - completed_participants_count
+      - imam_name
+      - mosque_id
+      - name
+      - neighborhood
+      - participation_share_percent
+      - rank
+      - registered_users_count
+      - target_participants
+      - target_progress_percent
+      - tier
+      - tier_label
+    MosqueLeaderboardSnapshot:
+      type: object
+      description: ساختار کامل پاسخ رنکینگ لحظه‌ای مساجد حوزه ۱۸۵ شهید کاوه.
+      properties:
+        organizer:
+          type: string
+        total_mosques:
+          type: integer
+        total_completed_participants:
+          type: integer
+        total_registered_users:
+          type: integer
+        leaderboard:
+          type: array
+          items:
+            $ref: '#/components/schemas/MosqueLeaderboardItem'
+      required:
+      - leaderboard
+      - organizer
+      - total_completed_participants
+      - total_mosques
+      - total_registered_users
+    OTPRequestInputRequest:
+      type: object
+      description: درخواست ارسال کد یک‌بارمصرف پیامکی (OTP).
+      properties:
+        phone_number:
+          type: string
+          minLength: 1
+          maxLength: 20
+      required:
+      - phone_number
+    OTPVerifyInputRequest:
+      type: object
+      description: تأیید کد یک‌بارمصرف پیامکی (OTP).
+      properties:
+        phone_number:
+          type: string
+          minLength: 1
+          maxLength: 20
+        code:
+          type: string
+          minLength: 1
+          maxLength: 10
+      required:
+      - code
+      - phone_number
+    ParticipantRegistrationInputRequest:
+      type: object
+      description: قرارداد ورودی ثبت‌نام و ورود شرکت‌کنندگان در مسابقه کاوه ۱۸۵.
+      properties:
+        first_name:
+          type: string
+          minLength: 1
+          description: نام کوچک شرکت‌کننده (مثلاً علی)
+          maxLength: 80
+        last_name:
+          type: string
+          minLength: 1
+          description: نام خانوادگی شرکت‌کننده (مثلاً محمدی)
+          maxLength: 100
+        national_id:
+          type: string
+          minLength: 1
+          description: کد ملی ۱۰ رقمی معتبر ایران (یکتا برای هر نفر)
+          maxLength: 16
+        phone_number:
+          type: string
+          minLength: 1
+          description: شماره تلفن همراه (مثلاً 09123456789 — یکتا برای هر نفر)
+          maxLength: 20
+        birth_date:
+          type: string
+          minLength: 1
+          description: تاریخ تولد به شمسی (مثلاً 1382/06/15) یا میلادی (2003-09-06)
+          maxLength: 20
+        mosque_id:
+          type: integer
+          description: شناسه مسجد انتخابی از لیست کشویی مساجد حوزه ۱۸۵ شهید کاوه
+      required:
+      - birth_date
+      - first_name
+      - last_name
+      - mosque_id
+      - national_id
+      - phone_number
+    PasswordLoginInputRequest:
+      type: object
+      description: ورود با رمز عبور (مخصوص ادمین و اپراتورها).
+      properties:
+        identifier:
+          type: string
+          minLength: 1
+          description: شماره تماس یا کدملی مدیر/اپراتور
+          maxLength: 32
+        password:
+          type: string
+          writeOnly: true
+          minLength: 1
+          maxLength: 128
+      required:
+      - identifier
+      - password
+    PatchedAdminExamConfigurationRequest:
+      type: object
+      description: سریالایزر مشاهده و ویرایش کامل تنظیمات زندهٔ آزمون توسط ادمین.
+      properties:
+        title:
+          type: string
+          minLength: 1
+          title: عنوان مسابقه
+          maxLength: 200
+        book_title:
+          type: string
+          minLength: 1
+          title: نام کتاب مسابقه
+          maxLength: 200
+        organizer_name:
+          type: string
+          minLength: 1
+          title: برگزارکننده
+          maxLength: 160
+        description:
+          type: string
+          title: توضیحات مسابقه
+        starts_at:
+          type: string
+          format: date-time
+          title: زمان شروع مهلت آزمون
+        ends_at:
+          type: string
+          format: date-time
+          title: زمان پایان مهلت آزمون
+        is_manually_open:
+          type: boolean
+          title: فعال بودن دستی آزمون توسط ادمین
+        duration_seconds:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+          title: مدت زمان آزمون برای هر شرکت‌کننده (ثانیه)
+        questions_per_attempt:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+          title: تعداد سوالات تصادفی در هر آزمون
+        require_otp_before_exam:
+          type: boolean
+          title: الزام تایید OTP پیامکی پیش از شروع آزمون
+        points_per_correct:
+          type: number
+          format: double
+          title: امتیاز هر پاسخ درست
+        points_per_wrong:
+          type: number
+          format: double
+          title: امتیاز/نمره منفی هر پاسخ غلط
+        max_time_bonus:
+          type: number
+          format: double
+          title: حداکثر پاداش سرعت پاسخگویی
+        thank_you_sms_enabled:
+          type: boolean
+          title: ارسال پیامک تشکر و کانال‌ها پس از پایان آزمون
+        thank_you_sms_template:
+          type: string
+          minLength: 1
+          title: قالب پیامک تشکر پایان آزمون
+        communication_channels:
+          title: کانال‌های ارتباطی و تبلیغاتی حوزه ۱۸۵
+    PatchedAdminMosqueRequest:
+      type: object
+      description: سریالایزر کامل مسجد برای پنل مدیریت ادمین.
+      properties:
+        code:
+          type: string
+          minLength: 1
+          title: کد مسجد
+          maxLength: 32
+        name:
+          type: string
+          minLength: 1
+          title: نام مسجد
+          maxLength: 160
+        neighborhood:
+          type: string
+          title: محله / محدوده
+          maxLength: 160
+        address:
+          type: string
+          title: نشانی
+          maxLength: 300
+        imam_name:
+          type: string
+          title: نام امام جماعت
+          maxLength: 120
+        commander_name:
+          type: string
+          title: نام فرمانده پایگاه بسیج
+          maxLength: 120
+        contact_phone:
+          type: string
+          title: تلفن هماهنگی
+          maxLength: 24
+        target_participants:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+          title: هدف‌گذاری تعداد مشارکت
+        display_order:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+          title: ترتیب نمایش
+        is_active:
+          type: boolean
+          title: فعال
+    PatchedAdminQuestionRequest:
+      type: object
+      description: سریالایزر کامل سوال چهارگزینه‌ای در بانک سوال مخصوص ادمین.
+      properties:
+        text:
+          type: string
+          minLength: 1
+          title: متن صورت سوال
+        chapter:
+          type: string
+          title: فصل / بخش کتاب
+          maxLength: 160
+        difficulty:
+          allOf:
+          - $ref: '#/components/schemas/DifficultyEnum'
+          title: سطح دشواری
+        explanation:
+          type: string
+          title: توضیح تشریحی (مخصوص ادمین)
+        is_active:
+          type: boolean
+          title: فعال
+        options:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminQuestionOptionRequest'
+    PatchedAdminUserUpdateInputRequest:
+      type: object
+      description: سریالایزر ویرایش کاربر توسط ادمین.
+      properties:
+        first_name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        last_name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        birth_date:
+          type: string
+          minLength: 1
+          maxLength: 20
+        mosque_id:
+          type: integer
+        role:
+          $ref: '#/components/schemas/AdminUserUpdateInputRoleEnum'
+        is_active:
+          type: boolean
+        is_phone_verified:
+          type: boolean
+    PatchedProfileUpdateInputRequest:
+      type: object
+      description: سریالایزر ویرایش اطلاعات هویتی و مسجد پیش از شروع آزمون.
+      properties:
+        first_name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        last_name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        birth_date:
+          type: string
+          minLength: 1
+          maxLength: 20
+        mosque_id:
+          type: integer
+    PublicExamStatus:
+      type: object
+      description: ساختار خروجی وضعیت عمومی و بازهٔ زمانی شرکت در آزمون.
+      properties:
+        title:
+          type: string
+        book_title:
+          type: string
+        organizer_name:
+          type: string
+        description:
+          type: string
+        window_state:
+          type: string
+        window_state_label:
+          type: string
+        can_participate:
+          type: boolean
+        status_message:
+          type: string
+        server_time:
+          type: string
+        server_time_jalali:
+          type: string
+        starts_at:
+          type: string
+        starts_at_jalali:
+          type: string
+        ends_at:
+          type: string
+        ends_at_jalali:
+          type: string
+        seconds_until_start:
+          type: integer
+        seconds_until_end:
+          type: integer
+        duration_seconds:
+          type: integer
+        questions_per_attempt:
+          type: integer
+        require_otp_before_exam:
+          type: boolean
+        active_question_bank_size:
+          type: integer
+        communication_channels:
+          type: array
+          items: {}
+      required:
+      - active_question_bank_size
+      - book_title
+      - can_participate
+      - communication_channels
+      - description
+      - duration_seconds
+      - ends_at
+      - ends_at_jalali
+      - organizer_name
+      - questions_per_attempt
+      - require_otp_before_exam
+      - seconds_until_end
+      - seconds_until_start
+      - server_time
+      - server_time_jalali
+      - starts_at
+      - starts_at_jalali
+      - status_message
+      - title
+      - window_state
+      - window_state_label
+    QuestionOptionSafe:
+      type: object
+      description: گزینهٔ تصادفی‌شدهٔ سوال برای شرکت‌کننده (بدون افشای شناسهٔ اصلی
+        یا صحیح بودن).
+      properties:
+        position:
+          type: integer
+        text:
+          type: string
+      required:
+      - position
+      - text
+    ReportCardOutput:
+      type: object
+      description: ساختار کارنامهٔ نهایی شرکت‌کننده (فقط آمار کلی بدون افشای درست/غلط
+        بودن تک‌تک سوالات).
+      properties:
+        tracking_code:
+          type: string
+        receipt_signature:
+          type: string
+        participant:
+          type: object
+          additionalProperties: {}
+        summary:
+          type: object
+          additionalProperties: {}
+        thank_you_message:
+          type: string
+        communication_channels:
+          type: array
+          items: {}
+      required:
+      - communication_channels
+      - participant
+      - receipt_signature
+      - summary
+      - thank_you_message
+      - tracking_code
+    RiskReviewInputRequest:
+      type: object
+      description: ورودی ثبت یادداشت بررسی سیگنال ریسک توسط ادمین.
+      properties:
+        review_note:
+          type: string
+          default: ''
+          maxLength: 300
+    SMSDeliveryLog:
+      type: object
+      description: ساختار خروجی لاگ تحویل پیامک برای پنل ادمین.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        recipient_phone:
+          type: string
+          title: شماره موبایل گیرنده
+          maxLength: 15
+        category:
+          allOf:
+          - $ref: '#/components/schemas/CategoryEnum'
+          title: نوع پیامک
+        provider:
+          type: string
+          title: درگاه پیامکی
+          maxLength: 32
+        message_text:
+          type: string
+          title: متن پیامک
+        status:
+          allOf:
+          - $ref: '#/components/schemas/StatusEnum'
+          title: وضعیت ارسال
+        provider_message_id:
+          type: string
+          title: شناسه رهگیری درگاه
+          maxLength: 120
+        error_message:
+          type: string
+          title: پیام خطا
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: تاریخ ایجاد
+      required:
+      - created_at
+      - id
+      - message_text
+      - recipient_phone
+    ServiceMetaResponse:
+      type: object
+      description: سریالایزر مستندسازی پاسخ متادیتای سرویس.
+      properties:
+        service:
+          type: string
+        title:
+          type: string
+        organizer:
+          type: string
+        schema_version:
+          type: string
+        today_jalali:
+          type: string
+        server_time_iso:
+          type: string
+        server_time_jalali:
+          type: string
+        timezone:
+          type: string
+      required:
+      - organizer
+      - schema_version
+      - server_time_iso
+      - server_time_jalali
+      - service
+      - timezone
+      - title
+      - today_jalali
+    SeverityEnum:
+      enum:
+      - low
+      - medium
+      - high
+      type: string
+      description: |-
+        * `low` - کم
+        * `medium` - متوسط
+        * `high` - بالا
+    SignalTypeEnum:
+      enum:
+      - ip_change_during_exam
+      - rapid_answering
+      - excessive_otp_attempts
+      - multi_device_conflict
+      type: string
+      description: |-
+        * `ip_change_during_exam` - تغییر ناگهانی IP در حین آزمون
+        * `rapid_answering` - پاسخ‌دهی غیرطبیعی و فوق‌سریع به سوالات
+        * `excessive_otp_attempts` - تلاش‌های مکرر ناموفق OTP
+        * `multi_device_conflict` - تلاش هم‌زمان از چند دستگاه
+    StatusEnum:
+      enum:
+      - sent
+      - failed
+      type: string
+      description: |-
+        * `sent` - ارسال‌شده
+        * `failed` - خطا در ارسال
+    SubmitAnswerInputRequest:
+      type: object
+      description: قرارداد ثبت پاسخ یک سوال در حین آزمون (شماره سوال ۱ تا ۵ و شماره
+        گزینه ۱ تا ۴).
+      properties:
+        question_number:
+          type: integer
+          maximum: 50
+          minimum: 1
+        selected_position:
+          type: integer
+          maximum: 4
+          minimum: 1
+      required:
+      - question_number
+      - selected_position
+    TokenRefreshInputRequest:
+      type: object
+      description: درخواست تمدید توکن دسترسی با استفاده از توکن Refresh.
+      properties:
+        refresh:
+          type: string
+    UserProfileOutput:
+      type: object
+      description: سریالایزر خروجی پروفایل کاربر به همراه مسجد و وضعیت آمادگی ورود
+        به آزمون.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        first_name:
+          type: string
+          title: نام
+          maxLength: 80
+        last_name:
+          type: string
+          title: نام خانوادگی
+          maxLength: 100
+        full_name:
+          type: string
+          readOnly: true
+        national_id:
+          type: string
+          title: کد ملی
+          maxLength: 10
+        phone_number:
+          type: string
+          title: شماره تماس
+          maxLength: 15
+        birth_date:
+          type: string
+          format: date
+          nullable: true
+          title: تاریخ تولد
+        birth_date_jalali:
+          type: string
+          readOnly: true
+        age:
+          type: integer
+          readOnly: true
+        mosque:
+          type: integer
+          nullable: true
+          title: مسجد انتخابی
+        mosque_id:
+          type: integer
+          readOnly: true
+        mosque_name:
+          type: string
+          nullable: true
+          description: نام مسجد انتخاب‌شده توسط کاربر.
+          readOnly: true
+        mosque_code:
+          type: string
+          nullable: true
+          description: کد مسجد انتخاب‌شده توسط کاربر.
+          readOnly: true
+        role:
+          allOf:
+          - $ref: '#/components/schemas/UserProfileOutputRoleEnum'
+          title: نقش کاربر
+        is_phone_verified:
+          type: boolean
+          title: تأیید تلفن همراه
+        mfa_enabled:
+          type: boolean
+          title: فعال بودن TOTP دومرحله‌ای
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: زمان ثبت‌نام
+      required:
+      - age
+      - birth_date_jalali
+      - created_at
+      - first_name
+      - full_name
+      - id
+      - last_name
+      - mosque_code
+      - mosque_id
+      - mosque_name
+      - national_id
+      - phone_number
+    UserProfileOutputRoleEnum:
+      enum:
+      - participant
+      - operator
+      - admin
+      type: string
+      description: |-
+        * `participant` - شرکت‌کننده در مسابقه
+        * `operator` - اپراتور / پشتیبان
+        * `admin` - مدیر کل سامانه
+  securitySchemes:
+    jwtAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

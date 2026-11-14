@@ -155,6 +155,27 @@ python3 manage.py runserver 0.0.0.0:8000
 
 ---
 
+## ۵.۱ استقرار روی cPanel در یک دستور (`deploy/back/back-deploy.sh`)
+
+برای هاست‌های اشتراکی (Phusion Passenger + MySQL)، پس از یک‌بار تنظیم `Setup Python App` و `.env`:
+
+```bash
+# بار اول: نصب، مهاجرت، فایل ایستا، ۱۷ مسجد و بانک سوال، ساخت ادمین
+bash ~/Kaveh185-Back/deploy/back/back-deploy.sh --seed --grant-admin "09XXXXXXXXX|کدملی|رمز"
+
+# از این به بعد: فقط همین (idempotent)
+bash ~/Kaveh185-Back/deploy/back/back-deploy.sh
+```
+
+اسکریپت پیش از هر مهاجرت **پشتیبان پایگاه‌داده** می‌گیرد، `check --deploy` را می‌گذراند،
+`migrate`/`collectstatic` را اجرا می‌کند، Passenger را ری‌استارت و health-check را تا ۶ بار
+بررسی می‌کند و در صورت شکست، **خودکار به آخرین نسخهٔ سالم** بازمی‌گردد.
+
+راهنمای کامل (پیش‌نیازها، `.env`، DNS، SSL، عیب‌یابی): [`deploy/back/CPANEL-GUIDE.md`](deploy/back/CPANEL-GUIDE.md)
+قرارداد OpenAPI برای تولید کلاینت فرانت: [`docs/openapi.yaml`](docs/openapi.yaml)
+
+---
+
 ## ۶. فهرست مستندات تخصصی و راهنمای فرانت‌اند
 
 | سند | مسیر فایل | مخاطب اصلی |
