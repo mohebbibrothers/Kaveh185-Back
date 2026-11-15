@@ -23,6 +23,21 @@ PII_BLIND_INDEX_KEY = config(
     default=SECRET_KEY,
 )
 
+# ─────────────────────────────────────────────────────────────────────────────
+# پل به لایهٔ رمزنگاری
+#
+# چرا این سه خط؟ `apps/core/crypto.py` کلید را از `FIELD_ENCRYPTION_KEY` و
+# `FIELD_HASH_KEY` می‌خواند، ولی این فایل تنها `PII_*` را ست می‌کرد. نتیجه:
+# مقدار `PII_ENCRYPTION_KEY` در .env نوشته می‌شد و هیچ‌وقت استفاده نمی‌شد و
+# رمزنگاری بی‌سروصدا به `SECRET_KEY` برمی‌گشت. اگر روزی SECRET_KEY عوض شود،
+# همهٔ داده‌های هویتیِ ذخیره‌شده دیگر قابل رمزگشایی نیستند — و اگر کسی فقط
+# دیتابیس را بدزدد، با همان SECRET_KEY می‌تواند بخواند. این پل، دو کلید را
+# از هم جدا می‌کند تا چرخش SECRET_KEY به از دست رفتن PII منجر نشود.
+# ─────────────────────────────────────────────────────────────────────────────
+FIELD_ENCRYPTION_KEY = PII_ENCRYPTION_KEY
+FIELD_HASH_KEY = PII_BLIND_INDEX_KEY
+
+
 DEBUG = config("DJANGO_DEBUG", default=False, cast=bool)
 ALLOWED_HOSTS: list[str] = config(
     "DJANGO_ALLOWED_HOSTS",

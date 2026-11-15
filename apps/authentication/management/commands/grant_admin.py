@@ -35,7 +35,25 @@ class Command(BaseCommand):
         password = str(options["password"])
 
         user = User.objects.filter(phone_number=phone).first()
+
+        # اگر کد ملی به کاربر دیگری تعلق دارد، ساختِ کاربر جدید با IntegrityError
+        # خام می‌شکست و پیام «duplicate key value violates unique constraint» به
+        # کاربر می‌رسید. اینجا صریح گزارش می‌کنیم و راه‌حل را هم می‌گوییم، چون
+        # این حالت در عمل رخ می‌دهد: شخصی قبلاً به‌عنوان شرکت‌کننده ثبت‌نام کرده
+        # و بعداً می‌خواهیم همان شخص را ادمین کنیم با شمارهٔ دیگر.
         if user is None:
+            conflict = User.objects.filter(national_id=nid).first()
+            if conflict is not None:
+                self.stderr.write(
+                    self.style.ERROR(
+                        f"کد ملی {nid} قبلاً به کاربر دیگری (شمارهٔ {conflict.phone_number}) "
+                        f"تعلق دارد و با شمارهٔ {phone} در تضاد است.\n"
+                        f"راه‌حل: یا همان شمارهٔ {conflict.phone_number} را با --phone بده، "
+                        f"یا کد ملی دیگری برای این ادمین انتخاب کن."
+                    )
+                )
+                raise SystemExit(1)
+
             user = User.objects.create_superuser(
                 phone_number=phone,
                 national_id=nid,
