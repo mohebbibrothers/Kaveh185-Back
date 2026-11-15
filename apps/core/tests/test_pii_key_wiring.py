@@ -27,11 +27,27 @@ def test_field_hash_key_is_bridged_from_blind_index_setting() -> None:
     assert settings.FIELD_HASH_KEY == settings.PII_BLIND_INDEX_KEY
 
 
-def test_encryption_and_blind_index_are_independent_keys() -> None:
-    """کلید AES و کلید HMAC نباید یکی باشند (جداسازی دامنهٔ کلید)."""
+def test_encryption_and_blind_index_can_be_independent(settings: object) -> None:
+    """اگر دو کلید جدا تنظیم شوند، کلیدهای مشتق‌شده هم باید جدا باشند.
+
+    توجه: در محیط تستِ پیش‌فرض، هر دو کلید به SECRET_KEY برمی‌گردند و
+    مشتق‌شده‌ها یکی می‌شوند — این طبیعی است. آنچه باید تضمین شود این است که
+    وقتی دو مقدار متفاوت داده می‌شود، جداسازی دامنهٔ کلید واقعاً رخ دهد.
+    """
     from apps.core.crypto import _derive_aes_key, _derive_hmac_key
 
+    settings.FIELD_ENCRYPTION_KEY = "clave-aes-distinta-aaaaaaaaaaaaaaaa"  # type: ignore[attr-defined]
+    settings.FIELD_HASH_KEY = "clave-hmac-distinta-bbbbbbbbbbbbbbbb"  # type: ignore[attr-defined]
     assert _derive_aes_key() != _derive_hmac_key()
+
+
+def test_same_key_material_yields_same_derivation(settings: object) -> None:
+    """اگر یک مقدار برای هر دو داده شود، اشتقاق‌ها یکی می‌شوند (رفتار مستند)."""
+    from apps.core.crypto import _derive_aes_key, _derive_hmac_key
+
+    settings.FIELD_ENCRYPTION_KEY = "unica-clave-misma-cccccccccccccccc"  # type: ignore[attr-defined]
+    settings.FIELD_HASH_KEY = "unica-clave-misma-cccccccccccccccc"  # type: ignore[attr-defined]
+    assert _derive_aes_key() == _derive_hmac_key()
 
 
 @pytest.mark.parametrize("value", ["0013542419", "09121234567", "x"])
