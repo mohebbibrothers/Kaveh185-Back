@@ -4,6 +4,72 @@
 
 ---
 
+## ۰. انتخاب پایگاه داده — چرا MariaDB
+
+Django 6.1 برای هر موتور، حداقل نسخه‌ای دارد که **خودش** بررسی می‌کند و اگر پایین‌تر باشد با `NotSupportedError` متوقف می‌شود:
+
+| موتور | حداقل نسخه برای Django 6.1 | نسخهٔ این هاست | نتیجه |
+|---|---|---|---|
+| PostgreSQL | **۱۵** | 13.23 | ❌ رد می‌شود |
+| MariaDB | **۱۰.۱۱** | 11.4.13 | ✅ پذیرفته می‌شود |
+| MySQL | **۸.۴** | (همان MariaDB) | — |
+
+شاهد از سورس نصب‌شده (`django/db/backends/mysql/features.py`):
+
+```python
+@cached_property
+def minimum_database_version(self):
+    if self.connection.mysql_is_mariadb:
+        return (10, 11)
+    else:
+        return (8, 4)
+```
+
+**پس MariaDB 11.4.13 تنها گزینه‌ای است که رسماً پشتیبانی می‌شود.** PostgreSQL هاست (13.23) هم EOL شده است (نوامبر ۲۰۲۵) و هیچ نسخهٔ فعالی از Django آن را نمی‌پذیرد.
+
+### تفاوت با PostgreSQL که عملاً اهمیت دارد
+
+* **`utf8mb4`**: دادهٔ چهاربایتی (ایموجی) و فارسی با نیم‌فاصله عیناً ذخیره و بازخوانی می‌شود — با تست تأیید شده.
+* **بدون کامپایل**: درایور `PyMySQL` خالص پایتون است؛ روی هاست اشتراکی که هدرهای MySQL و کامپایلر ندارد کار می‌کند (`config/__init__.py`).
+* **بدون گیت نسخه**: نیازی به وصله یا بک‌اند سفارشی نیست — بک‌اند رسمی Django استفاده می‌شود.
+
+### مهاجرت به PostgreSQL ۱۵+ (اگر روزی هاست ارتقا یافت)
+
+`make-env.sh` پارامتر `--db-engine` دارد. کافی است:
+
+```bash
+bash deploy/host/make-env.sh --force --db-engine django.db.backends.postgresql \
+  --db-port 5432 --db-name ... --db-user ... --db-password ...
+```
+
+ولی داده‌ها منتقل نمی‌شوند؛ `migrate` روی دیتابیس خالی اجرا می‌شود. برای انتقال داده از `dumpdata`/`loaddata` استفاده کنید.
+
+---
+
+## ۰.۱ ساخت دیتابیس با MySQL Database Wizard
+
+در cPanel، بخش **MySQL Databases** و **MySQL Database Wizard** به یک چیز اشاره دارند: Wizard فقط رابط گام‌به‌گام همان عملیات است (ساخت دیتابیس → ساخت کاربر → افزودن کاربر به دیتابیس → تعیین مجوز). روی این هاست هر دو مسیر نتیجهٔ یکسانی می‌دهند.
+
+مسیر خط فرمان (که همین پروژه استفاده می‌کند و قابل بازتولید است):
+
+```bash
+uapi --output=json Mysql create_database name=kaveh185
+uapi --output=json Mysql create_user name=k185app password='<strong-pass>'
+uapi --output=json Mysql set_privileges_on_database \
+  user=k185app database=kaveh185 privileges=ALL
+```
+
+سپس تأیید کنید که charset درست است:
+
+```bash
+mysql -u kavehir_k185app -p -e "SELECT @@character_set_database, @@collation_database;"
+# انتظار: utf8mb4 | utf8mb4_unicode_ci
+```
+
+> ⚠️ اگر charset روی `latin1` یا `utf8` (سه‌بایتی) باشد، متن فارسی خراب ذخیره می‌شود. `make-env.sh` این را کنترل نمی‌کند؛ دیتابیس باید از ابتدا `utf8mb4` ساخته شود.
+
+---
+
 ## ۱. مراحل استقرار در cPanel
 
 1. **ایجاد اپلیکیشن پایتون (`Setup Python App`)**:

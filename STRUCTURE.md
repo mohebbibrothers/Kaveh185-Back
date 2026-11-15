@@ -213,6 +213,7 @@ apps/core/
 ├── tests/
 │   ├── __init__.py
 │   ├── test_core_kernel.py
+│   ├── test_database_engine_choice.py
 │   └── test_pii_key_wiring.py
 ├── __init__.py
 ├── admin.py

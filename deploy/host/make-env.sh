@@ -16,10 +16,12 @@ set -Eeuo pipefail
 APP_DIR="${KAVEH185_APP_DIR:-$HOME/Kaveh185-Back}"
 ENV_FILE="$APP_DIR/.env"
 FORCE=0
-DB_NAME=""; DB_USER=""; DB_PASSWORD=""; DB_HOST="localhost"; DB_PORT="5432"
+DB_ENGINE="django.db.backends.mysql"
+DB_NAME=""; DB_USER=""; DB_PASSWORD=""; DB_HOST="localhost"; DB_PORT="3306"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --db-engine)    DB_ENGINE="${2:-}"; shift 2 ;;
     --db-name)      DB_NAME="${2:-}"; shift 2 ;;
     --db-user)      DB_USER="${2:-}"; shift 2 ;;
     --db-password)  DB_PASSWORD="${2:-}"; shift 2 ;;
@@ -60,8 +62,12 @@ PII_BLIND_INDEX_KEY=$PII_INDEX_KEY
 DJANGO_ALLOWED_HOSTS=kaveh185.ir,www.kaveh185.ir,api.kaveh185.ir,localhost,127.0.0.1
 DJANGO_ADMIN_URL=secure-kaveh185-admin/
 
-# پایگاه داده — PostgreSQL ۱۳ روی همین هاست (cPanel)
-DB_ENGINE=django.db.backends.postgresql
+# پایگاه داده — MariaDB 11.4 روی همین هاست (cPanel)
+# چرا MariaDB؟ Django 6.1 حداقل MariaDB 10.11 می‌خواهد و هاست 11.4.13 دارد
+# (تأیید: mysql --version → 11.4.13-MariaDB). PostgreSQL هاست فقط 13.23 است
+# و Django 6.1 حداقل ۱۵ می‌خواهد، پس MariaDB تنها مسیر با پشتیبانی رسمی است.
+# درایور: PyMySQL (خالص پایتون، بدون نیاز به کامپایل) — نگاه کنید به config/__init__.py
+DB_ENGINE=$DB_ENGINE
 DB_NAME=$DB_NAME
 DB_USER=$DB_USER
 DB_PASSWORD=$DB_PASSWORD
@@ -91,7 +97,7 @@ chmod 600 "$ENV_FILE"
 
 echo "✔ ساخته شد: $ENV_FILE (مجوز $(stat -c '%a' "$ENV_FILE"))"
 echo "  DJANGO_SETTINGS_MODULE : config.settings.production"
-echo "  DB_ENGINE              : django.db.backends.postgresql"
+echo "  DB_ENGINE              : $DB_ENGINE"
 echo "  DB_NAME                : $DB_NAME"
 echo "  DB_USER                : $DB_USER"
 echo "  کلیدها                 : SECRET_KEY، PII_ENCRYPTION_KEY، PII_BLIND_INDEX_KEY (هر سه تصادفی)"

@@ -33,7 +33,7 @@ def test_required_documentation_files_exist_and_are_rich() -> None:
 
 def test_lockfiles_are_in_sync_with_direct_requirements() -> None:
     """فایل‌های `requirements-lock.txt` و `requirements-dev-lock.txt` باید بدون Drift باشند."""
-    res = subprocess.run(  # noqa: S603
+    res = subprocess.run(
         [sys.executable, str(ROOT_DIR / "scripts" / "generate_locks.py"), "--check"],
         capture_output=True,
         text=True,
@@ -44,7 +44,7 @@ def test_lockfiles_are_in_sync_with_direct_requirements() -> None:
 
 def test_structure_md_is_in_sync_with_repository_tree() -> None:
     """فایل `STRUCTURE.md` باید دقیقاً منطبق با درخت واقعی مخزن باشد."""
-    res = subprocess.run(  # noqa: S603
+    res = subprocess.run(
         [sys.executable, str(ROOT_DIR / "scripts" / "generate_structure.py"), "--check"],
         capture_output=True,
         text=True,
