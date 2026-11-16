@@ -254,15 +254,23 @@ def test_api_csp_stays_strict() -> None:
 # ── حالت‌های مرزی ────────────────────────────────────────────────────────
 
 
-def test_without_frontend_installed_404_is_kept(tmp_path: Path) -> None:
+def test_without_frontend_installed_404_is_kept(tmp_path: Path, monkeypatch) -> None:
     """نبود فرانت، سایت را نمی‌خواباند: رفتار قبلی (۴۰۴) دست‌نخورده می‌ماند."""
+    from apps.core import frontend as fe
+
+    # مسیرهای جانشین خالی می‌شوند تا «نصب‌نشده» واقعاً نصب‌نشده باشد؛
+    # وگرنه فرانتِ نصب‌شدهٔ همین مخزن پیدا می‌شود و آزمون بی‌معنا می‌شد.
+    monkeypatch.setattr(fe, "_FRONTEND_FALLBACKS", ())
     with override_settings(FRONTEND_DIST=str(tmp_path / "does-not-exist")):
         resp = _client().get("/")
     assert resp.status_code == 404
 
 
-def test_incomplete_frontend_is_treated_as_absent(tmp_path: Path) -> None:
+def test_incomplete_frontend_is_treated_as_absent(tmp_path: Path, monkeypatch) -> None:
     """پوشه‌ای که `index.html` ندارد، فرانت نصب‌شده حساب نمی‌شود."""
+    from apps.core import frontend as fe
+
+    monkeypatch.setattr(fe, "_FRONTEND_FALLBACKS", ())
     root = tmp_path / "partial"
     root.mkdir()
     (root / "robots.txt").write_text("x", "utf-8")
@@ -283,3 +291,68 @@ def test_json_client_does_not_get_html(front_root: Path) -> None:
     with override_settings(FRONTEND_DIST=str(front_root)):
         resp = _client().get("/register/", HTTP_ACCEPT="application/json")
     assert resp.status_code == 404
+
+
+class TestAllowedHostsWww:
+    """نسخهٔ www باید بی‌ویرایش .env پذیرفته شود."""
+
+    def test_www_variant_added(self) -> None:
+        from config.settings.base import _with_www
+
+        assert "www.kaveh185.ir" in _with_www(["kaveh185.ir"])
+
+    def test_wildcards_and_loopback_untouched(self) -> None:
+        from config.settings.base import _with_www
+
+        for host in ("*.e2b.app", "localhost", "127.0.0.1", "testserver"):
+            assert host in _with_www([host])
+
+    def test_no_double_www(self) -> None:
+        from config.settings.base import _with_www
+
+        result = _with_www(["kaveh185.ir", "www.kaveh185.ir"])
+        assert result.count("www.kaveh185.ir") == 1
+        assert "www.www.kaveh185.ir" not in result
+
+
+class TestFrontendPathFallback:
+    """اگر `.env` به مسیر کهنه اشاره کند، سایت نباید ۵۰۳ بدهد."""
+
+    def test_falls_back_to_base_dir_frontend(self, settings, tmp_path) -> None:
+        from apps.core import frontend as fe
+
+        built = Path(settings.BASE_DIR) / "frontend"
+        fresh = tmp_path / "new-frontend"
+        fresh.mkdir()
+        (fresh / "index.html").write_text("<!doctype html><title>x</title>", encoding="utf-8")
+
+        original = getattr(settings, "FRONTEND_DIST", None)
+        original_fallbacks = fe._FRONTEND_FALLBACKS
+        try:
+            settings.FRONTEND_DIST = str(tmp_path / "stale-does-not-exist")
+            fe._FRONTEND_FALLBACKS = (fresh,)
+            assert fe.frontend_root() == fresh
+        finally:
+            settings.FRONTEND_DIST = original
+            fe._FRONTEND_FALLBACKS = original_fallbacks
+            assert built is not None
+
+    def test_env_path_wins_when_valid(self, settings, tmp_path) -> None:
+        from apps.core import frontend as fe
+
+        good = tmp_path / "good"
+        good.mkdir()
+        (good / "index.html").write_text("<!doctype html>", encoding="utf-8")
+        fallback = tmp_path / "fallback"
+        fallback.mkdir()
+        (fallback / "index.html").write_text("<!doctype html>", encoding="utf-8")
+
+        original = getattr(settings, "FRONTEND_DIST", None)
+        original_fallbacks = fe._FRONTEND_FALLBACKS
+        try:
+            settings.FRONTEND_DIST = str(good)
+            fe._FRONTEND_FALLBACKS = (fallback,)
+            assert fe.frontend_root() == good
+        finally:
+            settings.FRONTEND_DIST = original
+            fe._FRONTEND_FALLBACKS = original_fallbacks

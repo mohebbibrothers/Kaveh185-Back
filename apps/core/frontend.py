@@ -125,19 +125,42 @@ class _Build:
         return " ".join(parts)
 
 
+#: جای‌هایی که بستهٔ فرانت واقعاً نصب می‌شود، به ترتیب اولویت.
+#: چرا چند مسیر؟ چون اسکریپت نصب بسته را در `<BASE_DIR>/frontend` می‌نشاند،
+#: ولی `.env` هاست ممکن است از نصب قبلی به مسیر دیگری اشاره کند. اگر فقط
+#: به `.env` تکیه کنیم، سایت به‌جای خودش صفحهٔ ۵۰۳ می‌دهد — خطایی که شبیه
+#: «نصب نشده» است و آدم را سمت اشتباه می‌فرستد.
+_FRONTEND_FALLBACKS = (Path(settings.BASE_DIR) / "frontend",)
+
+
+def _candidate_roots() -> list[Path]:
+    """مسیرهای نامزد، به ترتیب: `.env` اول، بعد پیش‌فرض‌ها."""
+    roots: list[Path] = []
+    raw = getattr(settings, "FRONTEND_DIST", None)
+    if raw:
+        roots.append(Path(raw))
+    roots.extend(_FRONTEND_FALLBACKS)
+    seen: set[str] = set()
+    unique: list[Path] = []
+    for root in roots:
+        key = str(root)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(root)
+    return unique
+
+
 def frontend_root() -> Path | None:
     """ریشهٔ خروجی فرانت اگر موجود و معتبر باشد، وگرنه `None`.
 
     وجود `index.html` معیار است: پوشه‌ای که `index.html` ندارد، فرانتِ
     ساخته‌شده نیست (مثلاً فقط `public/`) و سرو کردنش صفحهٔ سفید می‌دهد.
     """
-    raw = getattr(settings, "FRONTEND_DIST", None)
-    if not raw:
-        return None
-    root = Path(raw)
-    if not (root / "index.html").is_file():
-        return None
-    return root
+    for root in _candidate_roots():
+        if (root / "index.html").is_file():
+            return root
+    return None
 
 
 def _read_build(root: Path) -> _Build:

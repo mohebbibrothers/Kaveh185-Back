@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -44,6 +45,42 @@ ALLOWED_HOSTS: list[str] = config(
     default="localhost,127.0.0.1,0.0.0.0,testserver",
     cast=Csv(),
 )
+
+
+def _is_public_domain(host: str) -> bool:
+    """آیا این هاست یک دامنهٔ واقعی است که «www.» گرفتن برایش معنا دارد؟
+
+    IPها، localhost، testserver، الگوهای * و . رد می‌شوند — هم بی‌معناست،
+    هم یکی از آن‌ها (آدرس همهٔ اینترفیس‌ها) نباید هرگز در این فهرست ظاهر شود.
+    """
+    if host.startswith(("*", ".", "www.")) or ":" in host:
+        return False
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        return "." in host
+    return False
+
+
+def _with_www(hosts: list[str]) -> list[str]:
+    """افزودن نسخهٔ `www.` هر دامنه، بدون نیاز به ویرایش دستی `.env`.
+
+    چرا لازم است: Passenger روی این هاست، دامنهٔ اصلی را هم با هاست‌نیم
+    `www.` تحویل می‌دهد. اگر `www.kaveh185.ir` در فهرست نباشد، جنگو
+    `DisallowedHost` می‌دهد و کاربر صفحهٔ خطای ۴۰۰ می‌بیند — خطایی که
+    هیچ ربطی به فرانت ندارد و سخت پیدا می‌شود.
+    """
+    out = list(hosts)
+    for host in hosts:
+        if not _is_public_domain(host):
+            continue
+        candidate = "www." + host
+        if candidate not in out:
+            out.append(candidate)
+    return out
+
+
+ALLOWED_HOSTS = _with_www(ALLOWED_HOSTS)
 
 APP_VERSION = config("APP_VERSION", default="1.0.0")
 ADMIN_URL_PATH = config("DJANGO_ADMIN_URL", default="secure-kaveh185-admin/")
