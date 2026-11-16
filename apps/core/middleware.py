@@ -7,6 +7,7 @@ import time
 from collections.abc import Callable
 from typing import Any
 
+from django.conf import settings
 from django.db import connection
 from django.http import HttpRequest, HttpResponse
 
@@ -99,15 +100,40 @@ class SecurityHeadersMiddleware:
         )
         # پاسخ فرانت ایستا سیاستِ خودش را از `apps/core/frontend.py` می‌گیرد
         # (با هشِ اسکریپت‌های درون‌خطی Next). سیاست سخت‌گیرانهٔ زیر فقط برای
-        # JSON و بقیهٔ پاسخ‌های بک‌اند است — اعمالش روی HTML سایت را کاملاً
+        # JSON و بقیهٔ پاسخ‌های بک‌اند است — اعمالش روی HTML، صفحه را کاملاً
         # سفید می‌کند: هیچ CSS/JS/فونت/تصویری بار نمی‌شود.
-        if not request.path.startswith(("/api/docs", "/api/redoc", "/admin")) and not (
-            response.has_header("Content-Security-Policy")
-        ):
-            response.setdefault(
-                "Content-Security-Policy",
-                "default-src 'none'; frame-ancestors 'none'; base-uri 'none'",
-            )
+        #
+        # ⚠️ باگ واقعی: مسیر پنل ادمین از `DJANGO_ADMIN_URL` می‌آید و به‌طور
+        # پیش‌فرض `secure-kaveh185-admin/` است، ولی اینجا فقط `/admin`
+        # مستثنا می‌شد. نتیجه: `default-src 'none'` روی HTML پنل می‌نشست و
+        # پنل بی‌استایل و بی‌آیکون بالا می‌آمد. حالا مسیر واقعی خوانده
+        # می‌شود، نه یک رشتهٔ ثابت.
+        admin_path = "/" + settings.ADMIN_URL_PATH.strip("/")
+        html_surfaces = (
+            "/api/docs",
+            "/api/redoc",
+            "/api/schema",
+            admin_path,
+            "/admin",
+        )
+        is_html_surface = request.path.startswith(html_surfaces)
+        if not is_html_surface and not response.has_header("Content-Security-Policy"):
+            # سند HTML غیرِ-API (مثلاً صفحهٔ ۵۰۳ پوسته) هم باید استایل بگیرد؛
+            # سیاستی که فقط `default-src 'none'` باشد آن را لخت می‌کند.
+            content_type = response.get("Content-Type", "")
+            if content_type.startswith("text/html"):
+                response.setdefault(
+                    "Content-Security-Policy",
+                    "default-src 'self'; style-src 'self' 'unsafe-inline'; "
+                    "img-src 'self' data:; font-src 'self'; "
+                    "script-src 'self' 'unsafe-inline'; "
+                    "object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+                )
+            else:
+                response.setdefault(
+                    "Content-Security-Policy",
+                    "default-src 'none'; frame-ancestors 'none'; base-uri 'none'",
+                )
         if response.status_code >= 400:
             response["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
         return response

@@ -66,14 +66,20 @@ class Command(BaseCommand):
         parser.add_argument(
             "--admin-phone",
             type=str,
-            default="09120000000",
-            help="شماره موبایل ادمین پیش‌فرض در حالت --with-demo-data",
+            default="",
+            help=(
+                "شمارهٔ موبایل ادمین در حالت --with-demo-data. "
+                "اگر خالی بماند، هیچ ادمینی ساخته نمی‌شود."
+            ),
         )
         parser.add_argument(
             "--admin-password",
             type=str,
-            default="Kaveh185@Admin1405",
-            help="رمز عبور ادمین پیش‌فرض در حالت --with-demo-data",
+            default="",
+            help=(
+                "رمز عبور ادمین در حالت --with-demo-data. "
+                "بدون مقدار، ادمین ساخته نمی‌شود؛ از reset_admin استفاده کنید."
+            ),
         )
 
     def handle(self, *args: Any, **options: Any) -> None:
@@ -85,26 +91,50 @@ class Command(BaseCommand):
 
         demo_created = 0
         if options.get("with_demo_data"):
-            admin_phone = str(options.get("admin_phone") or "09120000000")
-            admin_password = str(options.get("admin_password") or "Kaveh185@Admin1405")
+            # ── ادمین: هیچ اعتبارنامهٔ ثابتی ساخته نمی‌شود ────────────────
+            # نسخهٔ قبلی این‌جا یک ادمین با شمارهٔ `09120000000` و رمز
+            # `Kaveh185@Admin1405` می‌ساخت که هر دو در README عمومی آمده
+            # بودند؛ یعنی هر خوانندهٔ مخزن می‌توانست وارد پنل شود. اکنون فقط
+            # وقتی ادمین ساخته می‌شود که خودِ کاربر شماره و رمز را بدهد.
+            admin_phone = str(options.get("admin_phone") or "").strip()
+            admin_password = str(options.get("admin_password") or "")
+            if not admin_phone or not admin_password:
+                self.stdout.write(
+                    self.style.WARNING(
+                        "· ادمین ساخته نشد: شماره/رمز داده نشده است.\n"
+                        "  برای ساخت ادمین از این دستور استفاده کنید:\n"
+                        "    python manage.py reset_admin --phone <شماره> "
+                        "--password '<رمز>'"
+                    )
+                )
+                admin_phone = ""
+            if admin_phone and len(admin_password) < 10:
+                self.stderr.write(
+                    self.style.ERROR("رمز ادمین باید دست‌کم ۱۰ کاراکتر باشد. ادمین ساخته نشد.")
+                )
+                admin_phone = ""
             admin_nid = _make_valid_national_id(1850001)
-            admin_user, _ = User.objects.get_or_create(
-                phone_number=admin_phone,
-                defaults={
-                    "national_id": admin_nid,
-                    "first_name": "مدیر",
-                    "last_name": "حوزه ۱۸۵ شهید کاوه",
-                    "role": UserRole.ADMIN,
-                    "is_staff": True,
-                    "is_superuser": True,
-                    "is_phone_verified": True,
-                },
-            )
-            admin_user.role = UserRole.ADMIN
-            admin_user.is_staff = True
-            admin_user.is_superuser = True
-            admin_user.set_password(admin_password)
-            admin_user.save()
+            if admin_phone:
+                admin_user, _ = User.objects.get_or_create(
+                    phone_number=admin_phone,
+                    defaults={
+                        "national_id": admin_nid,
+                        "first_name": "مدیر",
+                        "last_name": "حوزه ۱۸۵ شهید کاوه",
+                        "role": UserRole.ADMIN,
+                        "is_staff": True,
+                        "is_superuser": True,
+                        "is_phone_verified": True,
+                    },
+                )
+                admin_user.role = UserRole.ADMIN
+                admin_user.is_staff = True
+                admin_user.is_superuser = True
+                admin_user.set_password(admin_password)
+                admin_user.save()
+                self.stdout.write(
+                    self.style.SUCCESS(f"✔ ادمین {admin_phone} با رمز انتخابی شما ساخته شد")
+                )
 
             mosques = list(Mosque.objects.filter(is_active=True).order_by("id"))
             for idx, (fname, lname, bdate, preferred_pos) in enumerate(_DEMO_PARTICIPANTS, start=1):

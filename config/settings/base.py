@@ -85,6 +85,15 @@ ALLOWED_HOSTS = _with_www(ALLOWED_HOSTS)
 APP_VERSION = config("APP_VERSION", default="1.0.0")
 ADMIN_URL_PATH = config("DJANGO_ADMIN_URL", default="secure-kaveh185-admin/")
 
+# ── مسیرهای ورود/خروج ────────────────────────────────────────────────────
+# پیش‌فرض جنگو `/accounts/profile/` است که در این پروژه وجود ندارد؛ نتیجه‌اش
+# این بود که ادمین بعد از ورود موفق، ۴۰۴ می‌گرفت. هر سه مسیر از همان
+# ADMIN_URL_PATH ساخته می‌شوند تا اگر آدرس پنل عوض شد، اینها هم همراه بیایند.
+_ADMIN_PREFIX = "/" + ADMIN_URL_PATH.strip("/")
+LOGIN_URL = f"{_ADMIN_PREFIX}/login/"
+LOGIN_REDIRECT_URL = f"{_ADMIN_PREFIX}/"
+LOGOUT_REDIRECT_URL = f"{_ADMIN_PREFIX}/login/"
+
 DJANGO_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",

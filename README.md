@@ -142,7 +142,11 @@ python3 manage.py migrate
 python3 manage.py seed_kaveh185
 
 # ۳. ساخت حساب مدیر کل (ادمین)
-python3 manage.py grant_admin --phone 09120000000 --national-id 0013542419 --password StrongAdminPass!185
+#    هیچ اعتبارنامهٔ آماده‌ای در کد وجود ندارد؛ شماره و رمز را خودتان می‌گذارید.
+#    اگر ادمین قدیمی هم هست و می‌خواهید پاک شود:
+python3 manage.py reset_admin --phone <شمارهٔ خودتان> --password '<رمز خودتان>'
+#    فقط ساخت/ارتقا، بدون حذف کسی:
+python3 manage.py grant_admin --phone <شمارهٔ خودتان> --national-id <کد ملی> --password '<رمز خودتان>'
 
 # ۴. اجرای سرور توسعه
 python3 manage.py runserver 0.0.0.0:8000

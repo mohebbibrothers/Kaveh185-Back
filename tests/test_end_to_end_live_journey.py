@@ -11,12 +11,28 @@ from rest_framework.test import APIClient
 
 from apps.audit_logs.chain import verify_audit_chain
 
+# اعتبارنامهٔ ادمینِ همین تست — هیچ ارتباطی با دادهٔ واقعی هاست ندارد و
+# هیچ جای دیگری از کد از آن استفاده نمی‌کند.
+_ADMIN_PHONE = "09120000185"
+_ADMIN_PASSWORD = "E2eOnly#Pass185"
+
 
 @pytest.mark.django_db()
 def test_complete_real_world_kaveh185_e2e_journey() -> None:
     """شبیه‌سازی کامل و واقعی تمام سناریوهای شرکت‌کننده، آزمون، کارنامه، ادمین، قرعه‌کشی و اکسل."""
-    # ۱. اجرای سیدر واقعی همراه با داده‌های دمو (۱۷ مسجد + سوالات + ادمین + ۱۷ شرکت‌کننده دمو)
+    # ۱. اجرای سیدر واقعی همراه با داده‌های دمو (۱۷ مسجد + سوالات + ۱۷ شرکت‌کننده دمو)
+    #
+    # ادمین دیگر بخشی از سیدر نیست: هیچ اعتبارنامهٔ ثابتی در کد نمی‌ماند.
+    # تست هم با همان مسیری می‌سازد که کاربر واقعی طی می‌کند (`reset_admin`)،
+    # و شماره/رمز فقط داخل همین تست تعریف شده‌اند.
     call_command("seed_kaveh185", "--with-demo-data")
+    call_command(
+        "reset_admin",
+        phone=_ADMIN_PHONE,
+        password=_ADMIN_PASSWORD,
+        first_name="مدیر",
+        last_name="سامانه",
+    )
 
     public_client = APIClient()
 
@@ -129,10 +145,10 @@ def test_complete_real_world_kaveh185_e2e_journey() -> None:
     assert receipt_resp.status_code == 200
     assert receipt_resp.json()["data"]["tracking_code"] == tracking_code
 
-    # ۱۲. ورود واقعی ادمین با اکانت پیش‌فرض (`09120000000` / `Kaveh185@Admin1405`)
+    # ۱۲. ورود واقعی ادمین با حسابی که در گام ۱ برای همین تست ساخته شد
     admin_login_resp = public_client.post(
         "/api/v1/auth/login/password/",
-        data={"identifier": "09120000000", "password": "Kaveh185@Admin1405"},
+        data={"identifier": _ADMIN_PHONE, "password": _ADMIN_PASSWORD},
         format="json",
     )
     assert admin_login_resp.status_code == 200

@@ -251,6 +251,40 @@ def test_api_csp_stays_strict() -> None:
     )
 
 
+def test_admin_panel_csp_is_not_restricted() -> None:
+    """پنل ادمین نباید سیاست سخت‌گیرانه بگیرد — وگرنه بدون استایل بالا می‌آید.
+
+    باگ واقعی: میان‌افزار فقط `"/admin"` را مستثنا می‌کرد، در حالی که آدرس
+    واقعی پنل از `DJANGO_ADMIN_URL` می‌آید (`/secure-kaveh185-admin/`).
+    نتیجه: `default-src 'none'` روی HTML پنل می‌نشست و پنل لخت و بی‌آیکون
+    بالا می‌آمد، در حالی که فایل‌های استاتیک کاملاً سالم سرو می‌شدند.
+
+    این تست روی آدرس واقعی پنل اجرا می‌شود، نه یک رشتهٔ ثابت.
+    """
+    from django.conf import settings
+
+    admin_root = "/" + str(settings.ADMIN_URL_PATH).strip("/") + "/"
+    resp = _client().get(admin_root, follow=False)
+
+    # ورود لازم است؛ یا صفحهٔ ورود می‌آید (۲۰۰) یا ریدایرکت به آن (۳۰۲).
+    assert resp.status_code in (200, 302)
+    csp = resp.get("Content-Security-Policy", "")
+    assert "default-src 'none'" not in csp, (
+        f"پنل ادمین ({admin_root}) سیاست سخت‌گیرانه گرفت و استایل‌هایش مسدود می‌شود"
+    )
+
+
+def test_admin_login_page_loads_real_admin_css() -> None:
+    """استایل خودِ پنل واقعاً در دسترس است (نه فقط وضعیت ۲۰۰)."""
+    from django.conf import settings
+
+    admin_root = "/" + str(settings.ADMIN_URL_PATH).strip("/") + "/"
+    login = _client().get(f"{admin_root}login/")
+    assert login.status_code == 200
+    assert "admin/css/base.css" in login.content.decode("utf-8", "ignore")
+    assert "default-src 'none'" not in login.get("Content-Security-Policy", "")
+
+
 # ── حالت‌های مرزی ────────────────────────────────────────────────────────
 
 
