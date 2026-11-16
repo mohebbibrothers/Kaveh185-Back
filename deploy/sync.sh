@@ -86,6 +86,35 @@ if (( DRY )); then dim "[dry-run] git pull --ff-only origin main"; exit 0; fi
 
 if git pull --ff-only origin main; then
   ok "هم‌سو شد · HEAD → $(git rev-parse --short HEAD)"
+
+  # ── بازگرداندن وضعیت اجرا ────────────────────────────────────────────
+  # ⚠️ `stash -u` هر فایل ردیابی‌نشده را هم برمی‌دارد، از جمله پیوند
+  # `frontend → current`. نتیجه: `FRONTEND_DIST` به مسیری اشاره می‌کند که
+  # دیگر نیست و کل سایت ۴۰۴ می‌شود — دقیقاً همان چیزی که کاربر دید.
+  # پس بعد از پول، وضعیت اجرا را از نو می‌سازیم.
+  step "۴/۴ بازگرداندن وضعیت اجرا"
+  FRONT_ROOT="${KAVEH185_FRONT_ROOT:-$HOME/kaveh185-front}"
+  if [[ -e "$APP_DIR/frontend" ]]; then
+    dim "پیوند frontend سر جایش است"
+  elif [[ -d "$FRONT_ROOT/current" ]]; then
+    ln -sfn "$FRONT_ROOT/current" "$APP_DIR/frontend"
+    ok "پیوند frontend بازسازی شد → $FRONT_ROOT/current"
+  else
+    warn "نه پیوند frontend هست نه $FRONT_ROOT/current — فرانت نصب نیست"
+    dim "بعد از هم‌سو‌سازی این را بزن: bash deploy/front-deploy.sh --url <نشانی بسته>"
+  fi
+  mkdir -p "$APP_DIR/tmp"
+  touch "$APP_DIR/tmp/restart.txt"
+  ok "ری‌استارت Passenger درخواست شد"
+
+  # اگر .env به مسیر ناموجود اشاره کند، همان لحظه بگو (نه بعد از ۴۰۴)
+  if [[ -f "$APP_DIR/.env" ]]; then
+    dist="$(grep -m1 '^FRONTEND_DIST=' "$APP_DIR/.env" | cut -d= -f2- | tr -d '\"'"'"' ' || true)"
+    if [[ -n "$dist" && ! -f "$dist/index.html" ]]; then
+      warn "FRONTEND_DIST به فرانت نرسید: $dist"
+      dim "اصلاح: echo 'FRONTEND_DIST=\"$APP_DIR/frontend\"' >> $APP_DIR/.env"
+    fi
+  fi
   if [[ "$dirty" != "0" ]]; then
     printf '\n'
     dim "تغییرات محلی در stash@{0} مانده‌اند (پاک نشده‌اند)."

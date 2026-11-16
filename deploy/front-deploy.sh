@@ -19,6 +19,10 @@
 # ══════════════════════════════════════════════════════════════════════════════
 set -Eeuo pipefail
 
+# آرگومان‌های اصلی — حلقهٔ تجزیه آن‌ها را shift می‌کند، ولی برای اجرای
+# دوباره (گزارش‌گیری) لازم‌شان داریم.
+ORIG_ARGS=("$@")
+
 SCRIPT_VERSION="1.1.0"
 readonly R=$'\033[0m' B=$'\033[1m' D=$'\033[2m'
 readonly G=$'\033[32m' Y=$'\033[33m' RD=$'\033[31m' BL=$'\033[34m' CY=$'\033[36m'
@@ -61,9 +65,27 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-mkdir -p "$LOG_DIR" "$RELEASES"
+mkdir -p "$LOG_DIR" "$RELEASES" "$APP_DIR/tmp" 2>/dev/null || true
 LOG_FILE="$LOG_DIR/front-deploy-$(date +%Y%m%d-%H%M%S).log"
-exec > >(tee -a "$LOG_FILE") 2>&1
+START_EPOCH="$(date +%s)"
+
+# ── گزارش، بدون process substitution ────────────────────────────────────
+# ⚠️ نسخهٔ قبلی اینجا `exec > >(tee -a "$LOG_FILE")` داشت. روی محیط‌هایی که
+# `/dev/fd` ندارند (cPanel و پوسته‌های محدود)، همان خط با
+# «/dev/fd/63: No such file or directory» می‌شکست و اسکریپت **پیش از هر
+# کاری** می‌مرد — بدون هیچ پیام روشنی.
+#
+# راه بی‌دردسر: کل اجرا را خودمان دوباره اجرا می‌کنیم و خروجی را با tee
+# می‌ریزیم. هیچ وابستگی به /dev/fd یا bash پیشرفته ندارد.
+if [[ -z "${K185_DEPLOY_LOGGED:-}" && "${K185_DEPLOY_QUIET:-0}" != "1" ]]; then
+  export K185_DEPLOY_LOGGED=1
+  # exec دوباره: همان اسکریپت با همان آرگومان‌ها، این بار از مسیر فایل.
+  set +e
+  bash "$0" "${ORIG_ARGS[@]}" 2>&1 | tee -a "$LOG_FILE"
+  rc="${PIPESTATUS[0]}"
+  set -e
+  exit "$rc"
+fi
 trap 'err "خطا در خط $LINENO (کد $?) — گزارش: $LOG_FILE"' ERR
 
 served_build() {
@@ -361,7 +383,17 @@ while IFS= read -r d; do
 done < <(ls -1dt "$RELEASES"/*/ 2>/dev/null)
 ok "نسخه‌های نگه‌داشته‌شده: $(find "$RELEASES" -maxdepth 1 -mindepth 1 -type d | wc -l | tr -d ' ')"
 
+if (( fail )); then
+  # ⚠️ نسخهٔ قبلی اینجا `exit 0` می‌داد. یعنی اسکریپت شکست را گزارش
+  # می‌کرد و در همان حال با موفقیت خارج می‌شد — و `&&` در دستور کاربر
+  # (… && touch tmp/restart.txt) اجازهٔ ادامه می‌گرفت. کد خروج باید
+  # با واقعیت بخواند.
+  printf '\n%s✖ استقرار ناتمام — راستی‌آزمایی رد شد%s\n' "$RD" "$R"
+  exit 1
+fi
+
 printf '\n%s%s%s\n' "$B$G" "✔ استقرار کامل شد" "$R"
 dim "نسخه: $ID · شناسه: $BUILD_ID"
+dim "مدت: $(( $(date +%s) - START_EPOCH )) ثانیه"
 dim "بازگشت: bash $0 --rollback"
 exit 0
