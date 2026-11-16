@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import pytest
+
 from apps.core.exceptions import ConflictDomainError, ValidationDomainError
 from apps.mosques.models import Mosque
 from apps.mosques.services import (
