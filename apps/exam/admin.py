@@ -78,7 +78,7 @@ class QuestionAdmin(admin.ModelAdmin):
     def source_cell(self, obj: Question) -> str:
         """داستان و صفحه در یک سلول."""
         if not obj.source_story and not obj.source_page:
-            return format_html('<span style="opacity:.45">—</span>')
+            return format_html('<span style="opacity:.45">{}</span>', "—")
         page = f"ص {obj.source_page}" if obj.source_page else ""
         return format_html("{} <span style='opacity:.5'>{}</span>", obj.source_story or "—", page)
 
@@ -201,14 +201,18 @@ class BookFileAdmin(admin.ModelAdmin):
     @admin.display(description="وضعیت", boolean=False)
     def published_badge(self, obj: BookFile) -> str:
         """نشان سبز/خاکستری برای وضعیت انتشار."""
+        # نکته: format_html بدون آرگومان TypeError می‌دهد؛ متن را به‌عنوان
+        # آرگومان می‌فرستیم تا هم escape شود و هم فهرست ادمین هرگز ۵۰۰ ندهد.
         if obj.is_published:
             return format_html(
                 '<span style="display:inline-block;padding:2px 9px;border-radius:999px;'
-                'background:#e7f3ea;color:#22703c;font-weight:700;font-size:11px">منتشر شده</span>'
+                'background:#e7f3ea;color:#22703c;font-weight:700;font-size:11px">{}</span>',
+                "منتشر شده",
             )
         return format_html(
             '<span style="display:inline-block;padding:2px 9px;border-radius:999px;'
-            'background:#f2efe8;color:#7a7264;font-weight:700;font-size:11px">پیش‌نویس</span>'
+            'background:#f2efe8;color:#7a7264;font-weight:700;font-size:11px">{}</span>',
+            "پیش‌نویس",
         )
 
     @admin.display(description="فرمت")

@@ -421,6 +421,41 @@ def get_current_active_attempt_or_finalize(*, user: User, request: Any = None) -
         return attempt
 
 
+class _ExamExpired(Exception):
+    """علامت داخلی «مهلت تمام شد» — هرگز به بیرون از این ماژول نمی‌رسد."""
+
+    def __init__(self, *, attempt_pk: int, tracking_code: str) -> None:
+        super().__init__(tracking_code)
+        self.attempt_pk = attempt_pk
+        self.tracking_code = tracking_code
+
+
+def _finalize_timeout_after_expiry(*, attempt_pk: int, config: Any, request: Any) -> None:
+    """صدور کارنامه پس از تراکنش پاسخ — با ردیف تازه از دیتابیس.
+
+    چرا ماژول‌سطح و با `pk`؟ چون `on_commit` بعد از بسته شدن تراکنش اجرا
+    می‌شود و شیء `attempt` آن لحظه ممکن است کهنه یا بسته باشد؛ این‌جا دوباره
+    از دیتابیس خوانده و قفل می‌شود.
+    """
+    with transaction.atomic():
+        attempt = (
+            ExamAttempt.objects.select_for_update()
+            .select_related("user", "mosque")
+            .prefetch_related("items__question")
+            .filter(pk=attempt_pk)
+            .first()
+        )
+        if attempt is None or attempt.status != ExamAttemptStatus.IN_PROGRESS:
+            return
+        _evaluate_and_finalize_attempt(
+            attempt=attempt,
+            final_status=ExamAttemptStatus.TIMED_OUT,
+            config=config,
+            now=timezone.now(),
+            request=request,
+        )
+
+
 def submit_question_answer(
     *,
     user: User,
@@ -429,6 +464,37 @@ def submit_question_answer(
     request: Any = None,
 ) -> ExamAttempt:
     """ثبت پاسخ یک سوال در حین آزمون (بدون امکان رد کردن سوال قبلی و بدون افشای درست/غلط بودن)."""
+    try:
+        return _submit_question_answer_locked(
+            user=user,
+            question_number=question_number,
+            selected_position=selected_position,
+            request=request,
+        )
+    except _ExamExpired as expired:
+        # کارنامه بعد از تراکنش صادر می‌شود؛ بدون این ترتیب، rollback ناشی از
+        # بالا رفتن خطا، صدور کارنامه را هم پاک می‌کرد و کاربر پیام
+        # «کارنامه صادر شد» را بدون کارنامه می‌دید.
+        _finalize_timeout_after_expiry(
+            attempt_pk=expired.attempt_pk,
+            config=get_or_create_exam_configuration(),
+            request=request,
+        )
+        raise ConflictDomainError(
+            "مهلت زمانی آزمون شما به پایان رسید و کارنامه با پاسخ‌های ثبت‌شده صادر گردید.",
+            code="exam_time_expired",
+            errors={"tracking_code": expired.tracking_code},
+        ) from None
+
+
+def _submit_question_answer_locked(
+    *,
+    user: User,
+    question_number: int,
+    selected_position: int,
+    request: Any = None,
+) -> ExamAttempt:
+    """بدنهٔ اصلی ثبت پاسخ؛ فقط از `submit_question_answer` صدا زده می‌شود."""
     if selected_position not in {1, 2, 3, 4}:
         raise ValidationDomainError(
             "گزینهٔ انتخابی باید عددی بین ۱ تا ۴ باشد.",
@@ -436,7 +502,6 @@ def submit_question_answer(
         )
 
     now = timezone.now()
-    config = get_or_create_exam_configuration()
 
     with transaction.atomic():
         attempt = (
@@ -458,19 +523,16 @@ def submit_question_answer(
             )
 
         # بررسی مهلت زمانی سرور (با ۲ ثانیه تحمل تاخیر شبکه)
+        #
+        # نکتهٔ حساس: صدور کارنامه باید **بیرون** از این تراکنش انجام شود.
+        # اگر داخل همان `atomic` باشد و بعد `ConflictDomainError` بالا برود،
+        # کل تراکنش (که شامل بستن آزمون و صدور کارنامه است) rollback می‌شود؛
+        # نتیجه: به کاربر می‌گوییم «کارنامه صادر شد» در حالی که هیچ کارنامه‌ای
+        # در دیتابیس نیست. پس با `on_commit` به بعد از کامیت منتقلش می‌کنیم.
         if now > attempt.expires_at + timedelta(seconds=NETWORK_GRACE_SECONDS):
-            _evaluate_and_finalize_attempt(
-                attempt=attempt,
-                final_status=ExamAttemptStatus.TIMED_OUT,
-                config=config,
-                now=now,
-                request=request,
-            )
-            raise ConflictDomainError(
-                "مهلت زمانی آزمون شما به پایان رسید و کارنامه با پاسخ‌های ثبت‌شده صادر گردید.",
-                code="exam_time_expired",
-                errors={"tracking_code": attempt.tracking_code},
-            )
+            # علامت داخلی؛ ترجمه‌اش به خطای دامنه و صدور کارنامه، بیرون از
+            # این تراکنش انجام می‌شود (پایین را ببینید).
+            raise _ExamExpired(attempt_pk=attempt.pk, tracking_code=attempt.tracking_code)
 
         items = list(
             ExamAttemptItem.objects.select_for_update()

@@ -38,7 +38,10 @@ def create_mosque(*, data: dict[str, Any], request: Any = None) -> Mosque:
                 commander_name=str(data.get("commander_name", "")).strip(),
                 contact_phone=str(data.get("contact_phone", "")).strip(),
                 target_participants=int(data.get("target_participants", 500)),
-                display_order=int(data.get("display_order", 1)),
+                # صفر یعنی «مدل خودش انتهای فهرست بگذارد». پیش‌تر پیش‌فرض ۱
+                # بود و همهٔ مساجد ساخته‌شده از API ترتیب یکسان می‌گرفتند؛
+                # نتیجه: ترتیب فهرست عمومی تصادفی می‌شد.
+                display_order=int(data.get("display_order", 0) or 0),
                 is_active=bool(data.get("is_active", True)),
             )
             record_audit_log(
