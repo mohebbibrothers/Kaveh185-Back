@@ -37,7 +37,14 @@ RELEASES="$FRONT_ROOT/releases"
 LOG_DIR="${KAVEH185_LOG_DIR:-$HOME/kaveh185-deploy-logs}"
 SITE_URL="${KAVEH185_SITE_URL:-https://kaveh185.ir}"
 HEALTH_URL="${KAVEH185_HEALTH_URL:-https://kaveh185.ir/api/v1/health/ready/}"
-DEFAULT_URL="${KAVEH185_BUNDLE_URL:-}"
+# ⚠️ نشانی پیش‌فرض بسته.
+# قبلاً این مقدار از `KAVEH185_BUNDLE_URL` می‌آمد و پیش‌فرضش خالی بود؛
+# نتیجه: هر بار که کاربر `--url` را جا می‌گذاشت، اسکریپت با
+# «منبعی مشخص نشده» می‌مرد و باید نشانی انتشار را دستی کپی می‌کرد —
+# دقیقاً همان «کار دستی که خطا می‌آورد» که قرار بود حذف شود.
+# اکنون پیش‌فرض، آخرین انتشار `frontend-latest` روی همان مخزن است و با
+# متغیر محیطی قابل تغییر است.
+DEFAULT_URL="${KAVEH185_BUNDLE_URL:-https://github.com/Kaveh185/Kaveh185-Front/releases/latest/download/frontend-latest.tar.gz}"
 
 KEEP_RELEASES=3
 BUNDLE=""; FROM_DIR=""; ACTION="deploy"; DRY_RUN=0; URL=""
@@ -227,6 +234,11 @@ STAGE="$(mktemp -d "$FRONT_ROOT/.stage.XXXXXX")"
 cleanup(){ [[ -d "$STAGE" ]] && rm -rf "$STAGE" || true; }
 trap 'cleanup; err "خطا در خط $LINENO — گزارش: $LOG_FILE"' ERR
 
+if [[ -z "$BUNDLE" && -z "$FROM_DIR" && -z "$URL" && -n "$DEFAULT_URL" ]]; then
+  URL="$DEFAULT_URL"
+  dim "بدون منبع صریح — پیش‌فرض: $URL"
+fi
+
 if [[ -z "$BUNDLE" && -z "$FROM_DIR" && -n "$URL" ]]; then
   BUNDLE="$(mktemp -t k185front.XXXXXX.tar.gz)"
   dim "دریافت: $URL"
@@ -265,37 +277,52 @@ else
 fi
 
 step "۳/۸ دروازهٔ محتوا (بی‌هیچ مفسر زبان)"
-[[ -f "$STAGE/index.html" ]] || die "محتوای استخراج‌شده index.html ندارد"
+# ⚠️ ریشهٔ محتوا ممکن است یک پوشهٔ تودرتو باشد.
+# بستهٔ گیت‌هاب وقتی با یک فایل داخلی ساخته می‌شود، همه‌چیز را زیر یک
+# پوشه می‌گذارد (`frontend/<files>`)، در حالی که بستهٔ محلی در ریشه است.
+# نسخهٔ قبلی فقط ریشه را نگاه می‌کرد و همان بسته‌های «درست» را با پیام
+# گمراه‌کنندهٔ «index.html ندارد» رد می‌کرد. اینجا اگر در ریشه نبود،
+# تنها زیرپوشهٔ موجود به‌عنوان ریشه پذیرفته می‌شود.
+CONTENT="$STAGE"
+if [[ ! -f "$CONTENT/index.html" ]]; then
+  __dirs="$(find "$STAGE" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')"
+  __root="$(find "$STAGE" -mindepth 2 -maxdepth 2 -name index.html -type f -printf '%h\n' 2>/dev/null | head -1)"
+  if [[ "$__dirs" == "1" && -n "$__root" ]]; then
+    CONTENT="$__root"
+    dim "ریشهٔ محتوا: ${CONTENT#"$STAGE"/}"
+  fi
+fi
+[[ -f "$CONTENT/index.html" ]] || die "محتوای استخراج‌شده index.html ندارد (ریشه یا یک پوشهٔ تودرتو بررسی شد)"
 for f in index.html 404.html robots.txt manifest.webmanifest BUILD_ID; do
-  [[ -f "$STAGE/$f" ]] || die "فایل حیاتی غایب است: $f — بسته با `pnpm pack:front` ساخته نشده"
+  [[ -f "$CONTENT/$f" ]] || die "فایل حیاتی غایب است: $f — بسته با `pnpm pack:front` ساخته نشده"
 done
 # بارِ RSC: نبودش یعنی هر کلیک داخلی، بارگذاری کامل صفحه است
-find "$STAGE" -name 'index.txt' -type f | grep -q . \
+find "$CONTENT" -name 'index.txt' -type f | grep -q . \
   || die "بارِ RSC (index.txt) در بسته نیست — ناوبری داخلی می‌شکند"
 
 # بررسی صحت تک‌تک فایل‌ها با sha256sum — جایگزین خواندن JSON
-if [[ -f "$STAGE/FILES.sha256" ]]; then
-  if ( cd "$STAGE" && sha256sum -c --quiet FILES.sha256 >/dev/null 2>&1 ); then
-    ok "هش $(wc -l < "$STAGE/FILES.sha256" | tr -d ' ') فایل تأیید شد"
+if [[ -f "$CONTENT/FILES.sha256" ]]; then
+  if ( cd "$CONTENT" && sha256sum -c --quiet FILES.sha256 >/dev/null 2>&1 ); then
+    ok "هش $(wc -l < "$CONTENT/FILES.sha256" | tr -d ' ') فایل تأیید شد"
   else
     err "بررسی هش ناموفق — فایل‌های خراب:"
-    ( cd "$STAGE" && sha256sum -c --quiet FILES.sha256 2>&1 | head -10 ) || true
+    ( cd "$CONTENT" && sha256sum -c --quiet FILES.sha256 2>&1 | head -10 ) || true
     die "بستهٔ ناسالم — استقرار متوقف شد"
   fi
 else
   warn "FILES.sha256 در بسته نیست — صحت فایل‌ها بررسی نشد"
 fi
 
-BUILD_ID="$(cat "$STAGE/BUILD_ID" | tr -d '[:space:]')"
+BUILD_ID="$(cat "$CONTENT/BUILD_ID" | tr -d '[:space:]')"
 [[ -n "$BUILD_ID" ]] || die "BUILD_ID خالی است"
-ROUTE_COUNT="$(wc -l < "$STAGE/ROUTES.txt" 2>/dev/null | tr -d ' ' || echo '?')"
-ok "نسخه $BUILD_ID · $ROUTE_COUNT مسیر · $(find "$STAGE" -type f | wc -l | tr -d ' ') فایل"
+ROUTE_COUNT="$(wc -l < "$CONTENT/ROUTES.txt" 2>/dev/null | tr -d ' ' || echo '?')"
+ok "نسخه $BUILD_ID · $ROUTE_COUNT مسیر · $(find "$CONTENT" -type f | wc -l | tr -d ' ') فایل"
 
 step "۴/۸ ساخت نسخهٔ تازه"
 ID="$(date +%Y%m%d-%H%M%S)"
 RELEASE="$RELEASES/$ID"
 run mkdir -p "$RELEASE"
-run cp -a "$STAGE/." "$RELEASE/"
+run cp -a "$CONTENT/." "$RELEASE/"
 run find "$RELEASE" -type d -exec chmod 755 {} +
 run find "$RELEASE" -type f -exec chmod 644 {} +
 run chmod 711 "$FRONT_ROOT" "$RELEASES" 2>/dev/null || true
