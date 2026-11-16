@@ -14,6 +14,10 @@ db.sqlite3
 db.sqlite3-journal
 staticfiles/
 media/
+
+# خروجی فرانت ایستا — با `deploy/front-deploy.sh` روی هاست ساخته می‌شود،
+# نه در مخزن (۶۰ فایل و چند مگابایت باینری فشرده).
+/frontend
 .env
 
 # Testing & Static Analysis Caches

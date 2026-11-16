@@ -124,8 +124,3 @@ class APIRootDiscoveryView(APIView):
             data=payload,
             message="به سامانه بک‌اند مسابقه کتابخوانی هفته بسیج (حوزه ۱۸۵ شهید کاوه) خوش آمدید.",
         )
-
-
-@extend_schema(exclude=True)
-class RootDiscoveryAliasView(APIRootDiscoveryView):
-    """مسیر ریشهٔ دامنه (`/`) بدون تکرار در اسکیمای OpenAPI."""

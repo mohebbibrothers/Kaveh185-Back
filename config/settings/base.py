@@ -93,6 +93,10 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "apps.core.middleware.APIVersionHeaderMiddleware",
+    # ⚠️ باید آخرین باشد: فقط درخواست‌هایی را می‌گیرد که جنگو برایشان ۴۰۴
+    # داده است (یعنی مسیری در بک‌اند نیست) و آن‌ها را به فرانت ایستا می‌دهد.
+    # اگر پیش از بقیه بیاید، می‌تواند مسیرهای API را ببلعد.
+    "apps.core.frontend.FrontendMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -190,6 +194,14 @@ STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATIC_ROOT.mkdir(parents=True, exist_ok=True)
 WHITENOISE_USE_FINDERS = True
+
+# ── فرانت ایستای Next (سروشده از درون جنگو) ─────────────────────────────
+# پوشه‌ای که خروجی `next build` (حالت export) درونش قرار می‌گیرد. مسیر
+# در تولید با متغیر محیطی `FRONTEND_DIST` روی هاست تعیین می‌شود؛ پیش‌فرض
+# `<BASE_DIR>/frontend` است و اگر خالی/نبود، سایت صفحهٔ ۵۰۳ فارسی می‌دهد
+# و API دست‌نخورده کار می‌کند. جزئیات: `apps/core/frontend.py`.
+FRONTEND_DIST = config("FRONTEND_DIST", default=str(BASE_DIR / "frontend"))
+
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 

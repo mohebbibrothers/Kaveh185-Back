@@ -20,11 +20,12 @@ def test_complete_real_world_kaveh185_e2e_journey() -> None:
 
     public_client = APIClient()
 
-    # ۲. تست کاتالوگ کشف API در ریشهٔ سایت (`/`, `/api/v1/`) و پروب‌های سلامت
-    welcome_resp = public_client.get("/")
-    assert welcome_resp.status_code == 200
-    assert welcome_resp.json()["success"] is True
-
+    # ۲. کاتالوگ کشف API و پروب‌های سلامت
+    #
+    # ⚠️ `/` دیگر JSON نیست: از زمانی که فرانت ایستا از درون جنگو سرو می‌شود،
+    # ریشهٔ دامنه صفحهٔ اول سایت است (`apps/core/frontend.py`). کاتالوگ کشف
+    # به همان مسیر صریح و مستندش یعنی `/api/v1/` منتقل شد. تست باید همان
+    # قرارداد واقعی را بسنجد، نه نشانی‌ای که دیگر وجود ندارد.
     discovery_resp = public_client.get("/api/v1/")
     assert discovery_resp.status_code == 200
     assert "public_endpoints" in discovery_resp.json()["data"]

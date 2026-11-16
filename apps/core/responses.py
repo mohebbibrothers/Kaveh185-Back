@@ -12,6 +12,7 @@ from __future__ import annotations
 from contextvars import ContextVar
 from typing import Any
 
+from django.http import JsonResponse
 from rest_framework import status
 from rest_framework.response import Response
 
@@ -104,4 +105,30 @@ def error_response(
     }
     response = Response(payload, status=status_code, headers=headers)
     response["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
+    return response
+
+
+def not_found_response(*, path: str = "", message: str | None = None) -> JsonResponse:
+    """پاسخ ۴۰۴ استاندارد به شکل JSON برای مسیرهای ناشناختهٔ **API**.
+
+    چرا لازم شد؟ تا امروز کلاینت‌ها با ۴۰۴ HTML جنگو روبه‌رو می‌شدند و
+    `JSON.parse` روی `<html>` می‌شکست — پیام «خطای نامشخص» به کاربر
+    نشان داده می‌شد، در حالی که مشکل فقط یک آدرس اشتباه بود.
+
+    دامنه‌اش عمداً محدود است: فقط وقتی که خودِ مسیر زیر `/api/` باشد.
+    مسیرهای غیر-API (صفحه‌های سایت) همان ۴۰۴ جنگو را می‌گیرند تا
+    `FrontendMiddleware` بتواند آن‌ها را به صفحهٔ ۴۰۴ فرانت بدهد.
+    """
+    body = {
+        "success": False,
+        "status_code": 404,
+        "code": "not_found",
+        "message": message or "این مسیر در API وجود ندارد.",
+        "trace_id": get_current_trace_id(),
+        "data": None,
+    }
+    if path:
+        body["errors"] = {"path": [path]}
+    response = JsonResponse(body, status=404, json_dumps_params={"ensure_ascii": False})
+    response["Cache-Control"] = "no-store"
     return response

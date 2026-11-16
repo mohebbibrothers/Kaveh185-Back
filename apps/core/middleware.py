@@ -97,7 +97,13 @@ class SecurityHeadersMiddleware:
             "Permissions-Policy",
             "accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()",
         )
-        if not request.path.startswith(("/api/docs", "/api/redoc", "/admin")):
+        # پاسخ فرانت ایستا سیاستِ خودش را از `apps/core/frontend.py` می‌گیرد
+        # (با هشِ اسکریپت‌های درون‌خطی Next). سیاست سخت‌گیرانهٔ زیر فقط برای
+        # JSON و بقیهٔ پاسخ‌های بک‌اند است — اعمالش روی HTML سایت را کاملاً
+        # سفید می‌کند: هیچ CSS/JS/فونت/تصویری بار نمی‌شود.
+        if not request.path.startswith(("/api/docs", "/api/redoc", "/admin")) and not (
+            response.has_header("Content-Security-Policy")
+        ):
             response.setdefault(
                 "Content-Security-Policy",
                 "default-src 'none'; frame-ancestors 'none'; base-uri 'none'",

@@ -120,6 +120,7 @@ Kaveh185-Back/apps/
 │   ├── crypto.py
 │   ├── docs_gate.py
 │   ├── exceptions.py
+│   ├── frontend.py
 │   ├── idempotency.py
 │   ├── jalali.py
 │   ├── metrics.py
@@ -226,6 +227,7 @@ apps/core/
 ├── crypto.py
 ├── docs_gate.py
 ├── exceptions.py
+├── frontend.py
 ├── idempotency.py
 ├── jalali.py
 ├── metrics.py
