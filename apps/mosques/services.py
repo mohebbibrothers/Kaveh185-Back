@@ -18,8 +18,14 @@ from .validators import validate_mosque_code
 
 
 def create_mosque(*, data: dict[str, Any], request: Any = None) -> Mosque:
-    """ایجاد یک مسجد جدید توسط ادمین همراه با ثبت در زنجیرهٔ حسابرسی و ابطال کش."""
-    code = validate_mosque_code(str(data.get("code", "")))
+    """ایجاد یک مسجد جدید توسط ادمین همراه با ثبت در زنجیرهٔ حسابرسی و ابطال کش.
+
+    کد مسجد دیگر اجباری نیست: اگر ادمین خالی بگذارد، مدل خودش کد بعدی
+    (`MSQ-18`، `MSQ-19`، …) را می‌سازد. ترتیب نمایش هم اگر صفر بماند
+    خودکار به انتهای فهرست می‌رود.
+    """
+    raw_code = str(data.get("code", "") or "").strip()
+    code = validate_mosque_code(raw_code) if raw_code else ""
     name = str(data.get("name", "")).strip()
     try:
         with transaction.atomic():
@@ -57,7 +63,8 @@ def create_mosque(*, data: dict[str, Any], request: Any = None) -> Mosque:
 def update_mosque(*, mosque: Mosque, data: dict[str, Any], request: Any = None) -> Mosque:
     """به‌روزرسانی اطلاعات یک مسجد توسط ادمین."""
     changes: dict[str, Any] = {}
-    if "code" in data:
+    # کد خالی یعنی «دست نزن»؛ فقط وقتی کاربر واقعاً مقداری فرستاده اعتبارسنجی کن.
+    if "code" in data and str(data.get("code") or "").strip():
         new_code = validate_mosque_code(str(data["code"]))
         if new_code != mosque.code:
             changes["code"] = {"old": mosque.code, "new": new_code}
@@ -173,3 +180,25 @@ def seed_default_mosques(*, request: Any = None) -> dict[str, int]:
         "existing": existing_count,
         "total": created_count + existing_count,
     }
+
+
+def move_mosque(*, mosque: Mosque, position: int, request: Any = None) -> Mosque:
+    """جابه‌جایی دستی یک مسجد در ترتیب نمایش و بازچینش بی‌شکاف بقیه.
+
+    چرا سرویس جدا و نه ویرایش ساده؟ چون «ترتیب» یک ویژگی مجموعه است، نه یک
+    عدد روی یک رکورد. اگر فقط عدد یک مسجد را عوض کنیم، اعداد تکراری می‌شوند
+    و ترتیب صفحه به ترتیب تصادفی دیتابیس می‌افتد.
+    """
+    with transaction.atomic():
+        old_position = mosque.display_order
+        mosque.move_to(int(position))
+        mosque.refresh_from_db()
+        record_audit_log(
+            action=AuditAction.MOSQUE_UPDATED,
+            resource_type="mosque",
+            resource_id=mosque.pk,
+            request=request,
+            changes={"display_order": {"old": old_position, "new": mosque.display_order}},
+        )
+        invalidate_domain_cache("mosques", reason=f"mosque.moved:{mosque.code}")
+        return mosque

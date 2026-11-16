@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from pathlib import Path
 from typing import Any
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
+from django.core.validators import FileExtensionValidator
 from django.db import models
 from django.utils import timezone
 
@@ -53,7 +56,7 @@ class ExamConfiguration(BaseModel):
     )
     book_title = models.CharField(
         max_length=200,
-        default="کتاب منتخب هفته بسیج — سیره شهدای شاخص و فرهنگ بسیجی",
+        default="شهادت آیه‌ها (۲)",
         verbose_name="نام کتاب مسابقه",
     )
     organizer_name = models.CharField(
@@ -63,7 +66,10 @@ class ExamConfiguration(BaseModel):
     )
     description = models.TextField(
         blank=True,
-        default="به مناسبت هفته بسیج، پس از ثبت اطلاعات و انتخاب مسجد خود، به ۵ سوال چهارگزینه‌ای پاسخ دهید.",
+        default=(
+            "به مناسبت هفتهٔ بسیج، پس از ثبت اطلاعات و انتخاب مسجد خود، "
+            "به پنج پرسش چهارگزینه‌ای از کتاب «شهادت آیه‌ها (۲)» پاسخ دهید."
+        ),
         verbose_name="توضیحات مسابقه",
     )
     starts_at = models.DateTimeField(
@@ -144,12 +150,24 @@ class Question(BaseModel):
     """سوال چهارگزینه‌ای در بانک سوال مسابقه کاوه ۱۸۵."""
 
     text = models.TextField(verbose_name="متن صورت سوال")
-    chapter = models.CharField(
+    # ── منبع سؤال در کتاب «شهادت آیه‌ها (۲)» ─────────────────────────────
+    # کتاب ۳۰ داستان دارد و فصل‌بندی ندارد؛ پس «فصل/بخش» معنا ندارد.
+    # این دو فیلد فقط برای ادمین است و هرگز به شرکت‌کننده نشان داده نمی‌شود
+    # (قرارداد عمومی آزمون فقط متن سؤال و گزینه‌ها را می‌فرستد).
+    source_story = models.CharField(
         max_length=160,
         blank=True,
         default="",
         db_index=True,
-        verbose_name="فصل / بخش کتاب",
+        verbose_name="نام داستان (اختیاری)",
+        help_text="مثلاً «داستان ۱۲ — آب را که گل آلود کنی…». فقط ادمین می‌بیند.",
+    )
+    source_page = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name="شمارهٔ صفحه (اختیاری)",
+        help_text="شمارهٔ صفحه در نسخهٔ فایل کتاب. فقط ادمین می‌بیند.",
     )
     difficulty = models.CharField(
         max_length=16,
@@ -401,3 +419,156 @@ class ExamAttemptItem(BaseModel):
     def __str__(self) -> str:
         """نمایش خوانای آیتم آزمون."""
         return f"Attempt #{self.attempt_id} - Q{self.question_number}"
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# کتاب مسابقه — فایلی که ادمین بارگذاری می‌کند و شرکت‌کننده می‌خواند
+# ══════════════════════════════════════════════════════════════════════════
+#
+# چرا مدل جدا و نه یک FileField روی ExamConfiguration؟
+#   ۱) نسخه‌دار است: اگر کتاب ویرایش شود، لینک‌هایی که در پیام‌رسان‌ها
+#      فرستاده شده‌اند نباید به محتوای دیگری اشاره کنند.
+#   ۲) چند فایل در آینده (نسخهٔ موبایل، جلد) بی‌دردسر جا می‌گیرد.
+#   ۳) شمارندهٔ بازدید یک ردیف مستقل است، نه عددی روی تنظیمات.
+#
+# امنیت: فایل در MEDIA_ROOT می‌نشیند ولی با سرو مستقیم پوشه داده نمی‌شود؛
+# نمای کنترل‌شده (`views_book.py`) فقط کتاب منتشرشده را می‌دهد.
+
+# فرمت‌هایی که مرورگرها بدون افزونهٔ اضافه باز می‌کنند. عمداً بسته است.
+ALLOWED_BOOK_EXTENSIONS = ["pdf", "epub"]
+MAX_BOOK_SIZE_BYTES = 60 * 1024 * 1024
+
+
+def book_upload_path(instance: BookFile, filename: str) -> str:
+    """مسیر ذخیرهٔ فایل: `books/<slug>/<نام-امن>`.
+
+    چرا نام فایل را بازسازی می‌کنیم؟ نام فایل کاربر می‌تواند شامل
+    کاراکترهای خطرناک، مسیر نسبی (`../`) یا حروف غیرقابل‌نمایش باشد.
+    فقط پسوند را نگه می‌داریم و بقیه را می‌سازیم.
+    """
+    ext = Path(filename).suffix.lower().lstrip(".")
+    safe_slug = (
+        "".join(ch for ch in (instance.slug or "book") if ch.isalnum() or ch in "-_") or "book"
+    )
+    version = instance.updated_at.strftime("%Y%m%d%H%M%S") if instance.updated_at else "v1"
+    return f"books/{safe_slug}/{safe_slug}-{version}.{ext or 'pdf'}"
+
+
+class BookFile(BaseModel):
+    """یک فایل کتاب قابل مطالعه برای شرکت‌کنندگان."""
+
+    title = models.CharField(
+        max_length=200,
+        default="شهادت آیه‌ها (۲)",
+        verbose_name="عنوان کتاب",
+    )
+    slug = models.SlugField(
+        max_length=80,
+        unique=True,
+        default="shahadat-ayeha-2",
+        allow_unicode=False,
+        verbose_name="شناسهٔ یکتا",
+        help_text="در نشانی عمومی کتاب استفاده می‌شود؛ انگلیسی و کوتاه باشد.",
+    )
+    description = models.TextField(
+        blank=True,
+        default="",
+        verbose_name="توضیح کوتاه",
+        help_text="یک یا دو جمله برای معرفی کتاب در صفحهٔ مطالعه.",
+    )
+    file = models.FileField(
+        upload_to=book_upload_path,
+        validators=[FileExtensionValidator(allowed_extensions=ALLOWED_BOOK_EXTENSIONS)],
+        verbose_name="فایل کتاب",
+        help_text="PDF یا EPUB — حداکثر ۶۰ مگابایت.",
+    )
+    # چرا FileField و نه ImageField؟ `ImageField` وابستگی اجباری به Pillow
+    # به کل پروژه اضافه می‌کند (روی هاست cPanel هم باید نصب شود) فقط برای
+    # اینکه یک تصویر جلد اعتبارسنجی شود. این‌جا همان کار با
+    # `FileExtensionValidator` و بدون وابستگی تازه انجام می‌شود.
+    cover = models.FileField(
+        upload_to="books/covers/",
+        blank=True,
+        null=True,
+        validators=[FileExtensionValidator(allowed_extensions=["jpg", "jpeg", "png", "webp"])],
+        verbose_name="جلد (اختیاری)",
+        help_text="تصویر عمودی JPG/PNG/WebP؛ اگر ندهید، جلد پیش‌فرض سایت استفاده می‌شود.",
+    )
+    is_published = models.BooleanField(
+        default=False,
+        db_index=True,
+        verbose_name="منتشر شده",
+        help_text="تا وقتی این تیک نخورد، کتاب در سایت نمایش داده نمی‌شود.",
+    )
+    page_count = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="تعداد صفحه (اختیاری)",
+        help_text="برای نمایش «۳۰ داستان در ۴۸ صفحه»؛ اختیاری است.",
+    )
+    story_count = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="تعداد داستان (اختیاری)",
+    )
+    view_count = models.PositiveIntegerField(
+        default=0,
+        editable=False,
+        verbose_name="تعداد بازدید",
+        help_text="با هر بار باز شدن صفحهٔ مطالعه یک واحد زیاد می‌شود.",
+    )
+
+    class Meta:
+        verbose_name = "کتاب مسابقه"
+        verbose_name_plural = "کتاب‌های مسابقه"
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self) -> str:
+        """نمایش خوانای کتاب."""
+        return f"{self.title} ({self.slug})"
+
+    # ── کمکی‌ها ──────────────────────────────────────────────────────────
+    @property
+    def extension(self) -> str:
+        """پسوند فایل بدون نقطه، با حروف کوچک."""
+        return Path(self.file.name or "").suffix.lower().lstrip(".")
+
+    @property
+    def is_pdf(self) -> bool:
+        """آیا فایل PDF است؟ (برای نمایش درون‌خطی)"""
+        return self.extension == "pdf"
+
+    def size_mb(self) -> float:
+        """حجم فایل به مگابایت، گردشده به یک رقم."""
+        try:
+            return round(float(self.file.size) / (1024 * 1024), 1)
+        except (OSError, ValueError, AttributeError):
+            return 0.0
+
+    def clean(self) -> None:
+        """اعتبارسنجی حجم فایل پیش از ذخیره.
+
+        چرا این‌جا و نه در فرم؟ چون هم پنل ادمین و هم API از این مدل
+        رد می‌شوند. یک نقطهٔ کنترل، دو مسیر پوشش.
+        """
+        super().clean()
+        if (
+            self.file
+            and hasattr(self.file, "size")
+            and self.file.size
+            and int(self.file.size) > MAX_BOOK_SIZE_BYTES
+        ):
+            raise ValidationError(
+                {
+                    "file": (
+                        f"حجم فایل کتاب {self.size_mb()} مگابایت است؛ "
+                        f"سقف مجاز {MAX_BOOK_SIZE_BYTES // (1024 * 1024)} مگابایت است."
+                    )
+                }
+            )
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        """ذخیره با اطمینان از خالی نبودن slug."""
+        if not self.slug:
+            self.slug = "book"
+        super().save(*args, **kwargs)

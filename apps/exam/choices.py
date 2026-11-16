@@ -39,19 +39,10 @@ class AnswerResultStatus(models.TextChoices):
 
 DEFAULT_COMMUNICATION_CHANNELS: tuple[dict[str, str], ...] = (
     {
-        "platform": "eitaa",
-        "title": "کانال رسمی حوزه مقاومت بسیج ۱۸۵ شهید کاوه در ایتا",
-        "url": "https://eitaa.com/kaveh185_ir",
-    },
-    {
         "platform": "bale",
-        "title": "کانال اطلاع‌رسانی قرعه‌کشی و رویدادهای فرهنگی در بله",
-        "url": "https://ble.ir/kaveh185_ir",
-    },
-    {
-        "platform": "rubika",
-        "title": "صفحه فرهنگی هفته بسیج حوزه ۱۸۵ شهید کاوه در روبیکا",
-        "url": "https://rubika.ir/kaveh185_ir",
+        "title": "خبرگزاری میدان نامجو — کانال رسمی حوزهٔ ۱۸۵ شهید کاوه در بله",
+        "url": "https://ble.ir/NamjooNewsAgency",
+        "handle": "@NamjooNewsAgency",
     },
 )
 

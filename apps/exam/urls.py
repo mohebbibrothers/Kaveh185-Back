@@ -20,6 +20,11 @@ from .views import (
     PublicLandingBootstrapAPIView,
     PublicReceiptVerifyAPIView,
 )
+from .views_book import (
+    BookViewCountAPIView,
+    PublicBookFileView,
+    PublicBookMetaAPIView,
+)
 
 app_name = "exam"
 
@@ -35,6 +40,10 @@ urlpatterns = [
     path(
         "receipt/<str:tracking_code>/", PublicReceiptVerifyAPIView.as_view(), name="receipt-verify"
     ),
+    # کتاب مسابقه (ادمین بارگذاری می‌کند، شرکت‌کننده می‌خواند)
+    path("book/", PublicBookMetaAPIView.as_view(), name="book-meta"),
+    path("book/<str:slug>/file/", PublicBookFileView.as_view(), name="book-file"),
+    path("book/<str:slug>/view/", BookViewCountAPIView.as_view(), name="book-view-count"),
     # مسیرهای مدیریت آزمون و بانک سوال توسط ادمین
     path("admin/config/", AdminExamConfigurationAPIView.as_view(), name="admin-config"),
     path("admin/questions/", AdminQuestionListCreateAPIView.as_view(), name="admin-questions"),

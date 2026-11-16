@@ -187,7 +187,7 @@ def serialize_attempt_answer_items_for_admin(attempt: ExamAttempt) -> list[dict[
                 "question_number": item.question_number,
                 "question_id": item.question_id,
                 "question_text": item.question.text,
-                "chapter": item.question.chapter,
+                "source_story": item.question.source_story,
                 "selected_position": item.selected_position,
                 "selected_option_id": item.selected_option_id,
                 "selected_option_text": selected_text,
@@ -513,7 +513,7 @@ def get_live_analytics_dashboard() -> dict[str, Any]:
             {
                 "question_id": q.id,
                 "text": q.text,
-                "chapter": q.chapter,
+                "source_story": q.source_story,
                 "difficulty": q.difficulty,
                 "is_active": q.is_active,
                 "times_drawn": drawn,

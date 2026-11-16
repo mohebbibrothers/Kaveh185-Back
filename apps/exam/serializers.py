@@ -6,7 +6,7 @@ from typing import Any
 
 from rest_framework import serializers
 
-from .models import ExamConfiguration, Question, QuestionOption
+from .models import BookFile, ExamConfiguration, Question, QuestionOption
 
 
 class PublicExamStatusSerializer(serializers.Serializer):
@@ -60,7 +60,6 @@ class ActiveAttemptQuestionSafeSerializer(serializers.Serializer):
 
     question_number = serializers.IntegerField()
     question_text = serializers.CharField()
-    chapter = serializers.CharField()
     selected_position = serializers.IntegerField(allow_null=True)
     is_answered = serializers.BooleanField()
     options = QuestionOptionSafeSerializer(many=True)
@@ -96,6 +95,41 @@ class ReportCardOutputSerializer(serializers.Serializer):
     communication_channels = serializers.ListField()
 
 
+class PublicBookSerializer(serializers.ModelSerializer):
+    """متادیتای کتاب برای شرکت‌کننده — بدون مسیر فایل روی دیسک."""
+
+    file_url = serializers.SerializerMethodField()
+    format_label = serializers.SerializerMethodField()
+    size_mb = serializers.SerializerMethodField()
+
+    class Meta:
+        model = BookFile
+        fields = [
+            "title",
+            "slug",
+            "description",
+            "page_count",
+            "story_count",
+            "view_count",
+            "file_url",
+            "format_label",
+            "size_mb",
+            "updated_at",
+        ]
+
+    def get_file_url(self, obj: BookFile) -> str:
+        """نشانی عمومی فایل — از نمای کنترل‌شده، نه مسیر خام media."""
+        return f"/api/v1/exam/book/{obj.slug}/file/"
+
+    def get_format_label(self, obj: BookFile) -> str:
+        """برچسب فارسی فرمت فایل."""
+        return {"pdf": "PDF", "epub": "EPUB"}.get(obj.extension, "فایل")
+
+    def get_size_mb(self, obj: BookFile) -> float:
+        """حجم فایل به مگابایت."""
+        return obj.size_mb()
+
+
 class AdminQuestionOptionSerializer(serializers.ModelSerializer):
     """سریالایزر گزینهٔ سوال در بانک سوال مخصوص ادمین (شامل کلید صحیح `is_correct`)."""
 
@@ -119,7 +153,8 @@ class AdminQuestionSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "text",
-            "chapter",
+            "source_story",
+            "source_page",
             "difficulty",
             "explanation",
             "is_active",

@@ -7,6 +7,7 @@ from datetime import timedelta
 from typing import Any
 
 from django.db import transaction
+from django.db.models import Count
 from django.utils import timezone
 
 from apps.audit_logs.choices import AuditAction
@@ -41,11 +42,49 @@ from .models import (
     QuestionOption,
 )
 from .scoring import compute_exam_score
+from .selection import describe_balance, select_balanced_questions
 from .selectors import get_or_create_exam_configuration
 from .validators import validate_question_options_payload
 
 _SYS_RANDOM = secrets.SystemRandom()
 NETWORK_GRACE_SECONDS = 2
+
+
+def _question_draw_counts() -> dict[int, int]:
+    """شمارش اینکه هر سؤال تا حالا چند بار در آزمون کسی آمده است.
+
+    چرا از روی دیتابیس و نه یک ستون شمارنده؟ چون `ExamAttemptItem` منبع
+    حقیقت است: اگر کارنامه‌ای حذف شود، شمارش هم درست اصلاح می‌شود. یک
+    ستون شمارنده می‌توانست با حذف/بازتصحیح از واقعیت جدا بیفتد.
+
+    هزینه: یک `GROUP BY` روی جدولی که به تعداد «پنج × تعداد شرکت‌کننده»
+    ردیف دارد — با ایندکس `attempt_id` و اندازهٔ این مسابقه، ارزان است.
+    """
+    rows = (
+        ExamAttemptItem.objects.values("question_id")
+        .annotate(total=Count("id"))
+        .values_list("question_id", "total")
+    )
+    return {int(qid): int(total) for qid, total in rows}
+
+
+def _clean_page(raw: Any) -> int | None:
+    """تبدیل ورودی صفحه به عدد یا `None`.
+
+    ادمین ممکن است خالی بفرستد، رشته بفرستد یا «۱۲» با رقم فارسی. هر سه
+    باید بی‌خطا به `int | None` تبدیل شوند؛ `ValueError` در لایهٔ سرویس
+    یعنی خطای ۵۰۰، در حالی که این فقط یک فیلد اختیاری است.
+    """
+    if raw in (None, "", "—"):
+        return None
+    text = str(raw).strip()
+    fa_digits = str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789")
+    text = text.translate(fa_digits)
+    try:
+        value = int(text)
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 else None
 
 
 def _generate_unique_tracking_code() -> str:
@@ -281,8 +320,19 @@ def start_or_resume_exam(*, user: User, request: Any = None) -> tuple[ExamAttemp
                 code="insufficient_question_bank",
             )
 
-        # ۱) انتخاب تصادفی ۵ سوال از بانک سوال با آنتروپی سیستم‌عامل
-        selected_questions = _SYS_RANDOM.sample(valid_questions, required_q_count)
+        # ۱) انتخاب منصفانه — نه فقط تصادفی
+        # ────────────────────────────────────────────────────────────────
+        # `random.sample` هر سؤال را هم‌احتمال می‌کشد، ولی «هم‌احتمال»
+        # با «عادلانه» یکی نیست: با بانک ۳۰ سؤالی، ممکن است یک نفر پنج
+        # سؤال ساده بگیرد و نفر بعدی پنج سؤال سخت. `selection` توزیع را
+        # لایه‌بندی می‌کند (سهم ساده/متوسط/دشوار)، سؤال‌های کم‌کشش‌تر را
+        # ترجیح می‌دهد و از هر داستان حداکثر یک سؤال می‌آورد.
+        selected_questions = select_balanced_questions(
+            valid_questions,
+            required_q_count,
+            draw_counts=_question_draw_counts(),
+        )
+        balance = describe_balance(selected_questions)
 
         ip_addr = get_client_ip(request) if request is not None else ""
         meta = getattr(request, "META", {}) if request is not None else {}
@@ -334,6 +384,9 @@ def start_or_resume_exam(*, user: User, request: Any = None) -> tuple[ExamAttemp
                 "mosque_id": locked_user.mosque_id,
                 "questions_count": required_q_count,
                 "duration_seconds": config.duration_seconds,
+                # ترکیب انتخاب — برای پاسخ به اعتراض احتمالی «سؤال‌های من سخت بود».
+                "question_tiers": balance["tiers"],
+                "unique_stories": balance["unique_stories"],
             },
         )
         return attempt, True
@@ -666,7 +719,8 @@ def create_question_with_options(
     with transaction.atomic():
         question = Question.all_objects.create(
             text=text,
-            chapter=str(data.get("chapter", "")).strip(),
+            source_story=str(data.get("source_story", "") or "").strip(),
+            source_page=_clean_page(data.get("source_page")),
             difficulty=str(data.get("difficulty", "medium")).strip(),
             explanation=str(data.get("explanation", "")).strip(),
             is_active=bool(data.get("is_active", True)),
@@ -705,7 +759,14 @@ def update_question_with_options(
     key_changed = False
 
     with transaction.atomic():
-        for field in ("text", "chapter", "difficulty", "explanation", "is_active"):
+        for field in (
+            "text",
+            "source_story",
+            "source_page",
+            "difficulty",
+            "explanation",
+            "is_active",
+        ):
             if field in data:
                 new_val = data[field]
                 old_val = getattr(question, field)
@@ -876,7 +937,8 @@ def seed_default_questions(*, request: Any = None) -> dict[str, int]:
             create_question_with_options(
                 data={
                     "text": q_text,
-                    "chapter": q_data["chapter"],
+                    "source_story": q_data.get("source_story", ""),
+                    "source_page": q_data.get("source_page"),
                     "difficulty": q_data["difficulty"],
                     "explanation": q_data["explanation"],
                     "is_active": True,

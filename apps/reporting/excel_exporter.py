@@ -421,7 +421,7 @@ def generate_multi_sheet_participants_excel(
             [
                 q_stat["question_id"],
                 q_stat["text"],
-                q_stat["chapter"],
+                q_stat["source_story"],
                 q_stat["difficulty"],
                 "فعال" if q_stat["is_active"] else "غیرفعال",
                 q_stat["times_drawn"],

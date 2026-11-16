@@ -85,7 +85,8 @@ def create_test_question(*, seq: int = 1, correct_option_number: int = 1) -> Que
     """ایجاد یک سوال چهارگزینه‌ای استاندارد در بانک سوال برای تست."""
     q = Question.objects.create(
         text=f"سوال تستی شماره {seq}: کدام گزینه درباره فرهنگ بسیج صحیح است؟",
-        chapter=f"فصل {((seq - 1) % 4) + 1}",
+        source_story=f"داستان {((seq - 1) % 30) + 1}",
+        source_page=((seq - 1) % 30) + 5,
         difficulty="medium",
         explanation=f"توضیح تشریحی سوال {seq}",
         is_active=True,

@@ -12,8 +12,8 @@ class QuestionFilterSet(django_filters.FilterSet):
 
     difficulty = django_filters.CharFilter(field_name="difficulty", lookup_expr="exact")
     is_active = django_filters.BooleanFilter(field_name="is_active")
-    chapter = django_filters.CharFilter(field_name="chapter", lookup_expr="icontains")
+    source_story = django_filters.CharFilter(field_name="source_story", lookup_expr="icontains")
 
     class Meta:
         model = Question
-        fields = ["difficulty", "is_active", "chapter"]
+        fields = ["difficulty", "is_active", "source_story"]

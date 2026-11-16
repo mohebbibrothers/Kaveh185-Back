@@ -128,7 +128,6 @@ def build_active_attempt_payload(attempt: ExamAttempt) -> dict[str, Any]:
             {
                 "question_number": item.question_number,
                 "question_text": item.question.text,
-                "chapter": item.question.chapter,
                 "selected_position": item.selected_position,
                 "is_answered": item.selected_position is not None,
                 "options": safe_options,
@@ -267,7 +266,9 @@ def get_admin_questions_queryset(
 
     if search.strip():
         q = search.strip()
-        qs = qs.filter(Q(text__icontains=q) | Q(chapter__icontains=q) | Q(explanation__icontains=q))
+        qs = qs.filter(
+            Q(text__icontains=q) | Q(source_story__icontains=q) | Q(explanation__icontains=q)
+        )
     return qs
 
 
