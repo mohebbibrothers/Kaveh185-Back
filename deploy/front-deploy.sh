@@ -88,6 +88,22 @@ if [[ -z "${K185_DEPLOY_LOGGED:-}" && "${K185_DEPLOY_QUIET:-0}" != "1" ]]; then
 fi
 trap 'err "خطا در خط $LINENO (کد $?) — گزارش: $LOG_FILE"' ERR
 
+# ── فهرست نسخه‌ها، بی‌نیاز از /dev/fd ─────────────────────────────────────
+# چرا تابع؟ چون هر دو `< <(ls …)` و `mapfile < <(...)` روی cPanel می‌شکنند
+# («/dev/fd/63: No such file or directory») — آنجا /dev/fd وجود ندارد.
+# این نسخه فقط glob، pipe و command substitution به‌کار می‌برد که همه‌جا هست.
+list_releases() {
+  local -a dirs=()
+  local d
+  shopt -s nullglob
+  for d in "$RELEASES"/*/; do dirs+=("${d%/}"); done
+  shopt -u nullglob
+  (( ${#dirs[@]} == 0 )) && return 0
+  # مسیرها با نام زمانی شروع می‌شوند، پس sort معکوس = تازه‌ترین اول
+  printf '%s\n' "${dirs[@]}" | sort -r
+}
+
+
 served_build() {
   curl -fsS -m 12 -o /dev/null -D - "$SITE_URL/" 2>/dev/null \
     | tr -d '\r' | awk -F': ' 'tolower($1)=="x-frontend-build"{print $2; exit}'
@@ -154,10 +170,10 @@ if [[ "$ACTION" == "rollback" ]]; then
   cur=""; [[ -L "$CURRENT" ]] && cur="$(readlink -f "$CURRENT" 2>/dev/null || true)"
   prev=""
   while IFS= read -r d; do
-    d="${d%/}"
+    [[ -n "$d" ]] || continue
     [[ "$d" == "$cur" ]] && continue
     prev="$d"; break
-  done < <(ls -1dt "$RELEASES"/*/ 2>/dev/null)
+  done <<< "$(list_releases)"
   [[ -n "$prev" && -d "$prev" ]] || die "نسخهٔ دیگری برای بازگشت نیست"
   dim "هدف: $(basename "$prev")"
   activate "$prev"; restart_app; sleep 2
@@ -376,11 +392,11 @@ step "۸/۸ هرس"
 CUR="$(readlink -f "$CURRENT")"
 n=0
 while IFS= read -r d; do
-  d="${d%/}"
-  [[ "$(realpath "$d")" == "$(realpath "$CUR")" ]] && continue
+  [[ -n "$d" ]] || continue
+  [[ "$(realpath "$d" 2>/dev/null)" == "$(realpath "$CUR" 2>/dev/null)" ]] && continue
   n=$((n+1))
   if (( n > KEEP_RELEASES )); then run rm -rf "$d"; dim "حذف: $(basename "$d")"; fi
-done < <(ls -1dt "$RELEASES"/*/ 2>/dev/null)
+done <<< "$(list_releases)"
 ok "نسخه‌های نگه‌داشته‌شده: $(find "$RELEASES" -maxdepth 1 -mindepth 1 -type d | wc -l | tr -d ' ')"
 
 if (( fail )); then
