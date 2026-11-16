@@ -148,3 +148,59 @@ def test_admin_move_url_exists() -> None:
     """مسیر جابه‌جایی در پنل ادمین ثبت شده است."""
     url = reverse("admin:mosques_mosque_move", args=[1, "up"])
     assert "/move/up/" in url
+
+
+# ── منبع داستان: فقط ادمین، هرگز شرکت‌کننده ────────────────────────────────
+def test_participant_payload_never_leaks_story_or_page() -> None:
+    """قرارداد عمومی آزمون نباید نام داستان یا شمارهٔ صفحه را بفرستد.
+
+    چرا این تست لازم است؟ فیلدهای `source_story`/`source_page` عمداً روی
+    مدل `Question` هستند تا ادمین بداند پرسشش از کجای کتاب آمده. اما اگر
+    روزی کسی سریالایزر آزمون را با `fields = "__all__"` بازنویسی کند،
+    همان اطلاعات به مرورگر شرکت‌کننده می‌رود و «کدام داستان» لو می‌رود.
+    این تست همان قفل است.
+    """
+    from apps.authentication.choices import UserRole
+    from apps.authentication.models import User
+    from apps.exam.models import Question
+    from apps.exam.selectors import build_active_attempt_payload
+    from apps.exam.services import start_or_resume_exam
+
+    # بانک باید دست‌کم به اندازهٔ پرسش‌های یک آزمون پر باشد.
+    questions = []
+    for idx in range(5):
+        q = Question.objects.create(
+            text=f"پرسش آزمون منبع {idx + 1}",
+            source_story="داستان ۱۲ — آب را که گل‌آلود کنی…" if idx == 0 else f"داستان {idx + 1}",
+            source_page=41 if idx == 0 else 10 + idx,
+        )
+        for pos in (1, 2, 3, 4):
+            q.options.create(
+                option_number=pos, text=f"گزینهٔ {pos} پرسش {idx + 1}", is_correct=(pos == 1)
+            )
+        questions.append(q)
+
+    mosque = Mosque.objects.create(name="مسجد منبع آزمون")
+
+    user = User.objects.create_user(
+        phone_number="09121110000",
+        national_id="0009900012",
+        first_name="شرکت",
+        last_name="کننده",
+        birth_date="1375-01-01",
+        mosque=mosque,
+        role=UserRole.PARTICIPANT,
+        is_phone_verified=True,
+    )
+    attempt, _ = start_or_resume_exam(user=user)
+    payload = build_active_attempt_payload(attempt)
+
+    # کلیدهای هر پرسش، دقیقاً همان‌هایی که رابط کاربری می‌خواند
+    allowed = {"question_number", "question_text", "selected_position", "is_answered", "options"}
+    for item in payload["questions"]:
+        assert set(item.keys()) == allowed
+
+    flat = str(payload)
+    assert "داستان ۱۲" not in flat
+    assert "source_story" not in flat
+    assert "source_page" not in flat
