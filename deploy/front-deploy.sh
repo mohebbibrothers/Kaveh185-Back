@@ -44,7 +44,7 @@ HEALTH_URL="${KAVEH185_HEALTH_URL:-https://kaveh185.ir/api/v1/health/ready/}"
 # دقیقاً همان «کار دستی که خطا می‌آورد» که قرار بود حذف شود.
 # اکنون پیش‌فرض، آخرین انتشار `frontend-latest` روی همان مخزن است و با
 # متغیر محیطی قابل تغییر است.
-DEFAULT_URL="${KAVEH185_BUNDLE_URL:-https://github.com/Kaveh185/Kaveh185-Front/releases/latest/download/frontend-latest.tar.gz}"
+DEFAULT_URL="${KAVEH185_BUNDLE_URL:-https://github.com/mohebbibrothers/Kaveh185-Front/releases/latest/download/frontend.tar.gz}"
 
 KEEP_RELEASES=3
 BUNDLE=""; FROM_DIR=""; ACTION="deploy"; DRY_RUN=0; URL=""
