@@ -15,6 +15,7 @@
 #     bash ~/kaveh185-update.sh
 #     bash ~/kaveh185-update.sh --check      # فقط بررسی، هیچ تغییری نده
 #     bash ~/kaveh185-update.sh --undo       # بازگشت به نسخهٔ فرانتِ قبلی
+#     bash ~/kaveh185-update.sh --hard       # استقرارِ کاملِ بک‌اند (بکاپ+وابستگی‌ها)
 #
 #  ⚠️ این اسکریپت به جز bash/curl/tar/git چیزی لازم ندارد (روی هاست
 #     نه Node هست نه python3 آزاد؛ هرچه لازم است در اسکریپت‌های خودِ اپ است).
@@ -37,6 +38,7 @@ MODE="deploy"
 for a in "$@"; do
   case "$a" in
     --check|--dry-run) MODE="check" ;;
+    --hard) MODE="hard" ;;
     --undo|--rollback) MODE="undo" ;;
     -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
     *) printf 'آرگومانِ ناشناخته: %s\n' "$a" >&2; exit 2 ;;
@@ -55,7 +57,24 @@ dim(){  printf '%s  %s%s\n' "$D" "$*" "$R"; }
 die(){  err "$*"; summary; exit 1; }
 
 mkdir -p "$LOG_DIR"
-exec > >(tee -a "$LOG") 2>&1        # هر چه دیده می‌شود، در لاگ هم هست
+
+# ── لاگ، بدونِ process substitution ─────────────────────────────────────────
+# ⚠️ درسِ گران: روی این هاست (`/dev/fd` ندارد) خطِ
+#     exec > >(tee -a "$LOG") 2>&1
+# با «/dev/fd/20: No such file or directory» اسکریپت را **پیش از هر کاری**
+# می‌کشت. راهِ بی‌دردسر: خودِ اسکریپت را دوباره با `tee` اجرا می‌کنیم؛ هیچ
+# وابستگی به /dev/fd یا named pipe نمی‌ماند.
+if [[ -z "${K185_UPDATE_LOGGED:-}" ]]; then
+  if [[ -r "$0" ]]; then
+    export K185_UPDATE_LOGGED=1
+    set +e
+    bash "$0" "$@" 2>&1 | tee -a "$LOG"
+    rc="${PIPESTATUS[0]}"
+    set -e
+    exit "$rc"
+  fi
+  warn "اسکریپت از مسیرِ فایل اجرا نشد — لاگ در $LOG ساخته نمی‌شود"
+fi
 
 banner(){
   printf '\n%s╔══════════════════════════════════════════════════════════════╗%s\n' "$B$CY" "$R"
@@ -140,13 +159,30 @@ ok "فرانت منتشر شد"
 # ۳) بک‌اند — کدِ تازه (بدون دانه‌ریزیِ اولیه، با هم‌گام‌سازیِ گالری)
 # ══════════════════════════════════════════════════════════════════════════════
 step "۳/۷ · بک‌اند — کدِ تازه + مهاجرت + استاتیک + گالری"
-bash "$BACK_DEPLOY" --gallery || die "استقرارِ بک‌اند شکست خورد (خودش به نسخهٔ قبلی برگرداند)"
+if [[ "$MODE" == "hard" ]]; then
+  # استقرارِ کامل: بکاپ، نصب وابستگی‌ها، همهٔ بررسی‌ها، بازگشتِ خودکار
+  bash "$BACK_DEPLOY" --gallery || die "استقرارِ کاملِ بک‌اند شکست خورد"
+else
+  # مسیرِ پیش‌فرضِ آپدیت: همان چیزی که برای کد لازم است، سریع و کم‌ریسک
+  bash "$BACK_DEPLOY" --prep --gallery || die "به‌روزرسانیِ بک‌اند شکست خورد"
+fi
 ok "بک‌اند به‌روز شد"
 dim "گالری با تصاویرِ بستهٔ فرانتِ همین لحظه هم‌گام شد (seed_gallery --force)"
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ۴) راستی‌آزماییِ عمیق
 # ══════════════════════════════════════════════════════════════════════════════
+# ── دروازهٔ «هیچ چیزی خراب نشود» ─────────────────────────────────────────────
+# اگر بیلد یا مهاجرت چیزی را شکسته باشد، این‌جا پیش از ادامه می‌ایستیم و
+# از کاربر می‌خواهیم بازگشت بزند — نه این‌که تا آخر برویم و گزارشِ سبز بدهیم.
+if [[ "$(code "${SITE_URL%/}/")" != "200" ]]; then
+  die "صفحهٔ اول ۲۰۰ نداد — ادامه بی‌معنی است. بازگشت: bash $0 --undo"
+fi
+if [[ "$(code "${SITE_URL%/}/api/v1/health/ready/")" != "200" ]]; then
+  die "API آماده نیست — بازگشت: bash $0 --undo"
+fi
+ok "دروازه: سایت و API هر دو زنده‌اند — ادامه می‌دهیم"
+
 step "۴/۷ · راستی‌آزماییِ صفحه‌ها"
 S="${SITE_URL%/}"
 probe "$S/" "صفحهٔ اول"
@@ -173,7 +209,8 @@ else
   warn "تصاویرِ نوارِ شهدا هنوز قدیمی‌اند: ${gallery_imgs:-—}"
   warn "دستی: cd $APP_DIR && .venv/bin/python manage.py seed_gallery --force   (یا مسیرِ venv خودت)"
 fi
-frame_hdr="$(curl -fsSI -m 15 "$S/api/v1/exam/book/" 2>/dev/null | tr -d '\r' | awk -F': ' 'tolower($1)=="x-frame-options"{print $2; exit}')"
+book_file="$(curl -fsS -m 20 "$S/api/v1/exam/book/" 2>/dev/null | grep -o '"/api/v1/exam/book/[^"]*file/"' | tr -d '"' | head -1 || true)"
+frame_hdr="$(curl -fsSI -m 15 "$S${book_file:-/api/v1/exam/book/}" 2>/dev/null | tr -d '\r' | awk -F': ' 'tolower($1)=="x-frame-options"{print $2; exit}')"
 if [[ "${frame_hdr^^}" == "SAMEORIGIN" ]]; then
   ok "خوانندهٔ کتاب مجاز به قاب‌شدن در دامنهٔ خودی است (SAMEORIGIN)"
 else

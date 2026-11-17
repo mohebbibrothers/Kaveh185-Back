@@ -14,6 +14,9 @@
 #      --no-pull     بدون git pull (برای وقتی خودت کد را گذاشتی)
 #      --no-rollback بازگشت خودکار را خاموش کن (برای دیباگ)
 #      --seed        دانه‌ریزی اولیهٔ ۱۷ مسجد + تنظیمات + بانک سوال (فقط بار اول)
+#      --prep        فقط مهاجرت‌های «تازه» + collectstatic (بدون بکاپ، بدون
+#                    بررسی migrate/plan کامل) — برای آپدیتِ سریعِ کد
+#      --no-git      بدون git fetch/reset (وقتی والد خودش کد را آورده)
 #      --gallery     هم‌گام‌سازیِ تصاویر گالری/نوار شهدا با بستهٔ فرانتِ نصب‌شده
 #                    (همان `seed_gallery --force`؛ فقط رکوردهای خودِ دستور را
 #                    بازنویسی می‌کند و محتوای ادمین را دست نمی‌زند)
@@ -46,7 +49,11 @@ HEALTH_URL="${KAVEH185_HEALTH_URL:-https://api.kaveh185.ir/api/v1/health/}"
 BACKUP_DIR="${KAVEH185_BACKUP_DIR:-$HOME/kaveh185-backups}"
 KEEP_BACKUPS="${KAVEH185_KEEP_BACKUPS:-5}"
 
-DRY_RUN=0; DO_PULL=1; ROLLBACK=1; DO_SEED=0; WITH_DEMO=0; FORCE=0; DO_GALLERY=0
+# آرگومان‌های اصلی: اجرای دوبارهٔ اسکریپت (برای تی‌کردنِ لاگ) به آن‌ها نیاز دارد،
+# ولی حلقهٔ تجزیه آن‌ها را shift می‌کند.
+ORIG_ARGS=("$@")
+
+DRY_RUN=0; DO_PULL=1; ROLLBACK=1; DO_SEED=0; WITH_DEMO=0; FORCE=0; DO_GALLERY=0; PREP=0
 GRANT_ADMIN=""
 
 # ── پارس آرگومان‌ها ─────────────────────────────────────────────────────────
@@ -57,6 +64,8 @@ while [[ $# -gt 0 ]]; do
     --no-rollback) ROLLBACK=0 ;;
     --seed) DO_SEED=1 ;;
     --gallery) DO_GALLERY=1 ;;
+    --prep) PREP=1 ;;
+    --no-git) DO_PULL=0 ;;
     --with-demo) DO_SEED=1; WITH_DEMO=1 ;;
     --grant-admin) GRANT_ADMIN="${2:-}"; shift ;;
     --force) FORCE=1 ;;
@@ -70,7 +79,24 @@ done
 mkdir -p "$LOG_DIR" "$BACKUP_DIR"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 LOG_FILE="$LOG_DIR/deploy-$STAMP.log"
-exec > >(tee -a "$LOG_FILE") 2>&1
+
+# ── گزارش در فایل، بدونِ process substitution ────────────────────────────────
+# ⚠️ نسخهٔ قبلی این‌جا `exec > >(tee -a "$LOG_FILE") 2>&1` بود. روی این هاست
+# (`/dev/fd` ندارد — همان‌جا که `front-deploy.sh` هم یک بار با
+# «/dev/fd/63: No such file or directory» مرد) همین خط اسکریپت را **پیش از
+# هر کاری** می‌کشت. چون این اسکریپت حالا از `kaveh185-update.sh` صدا زده
+# می‌شود، آن مرگ به شکلِ «کل آپدیت هیچ کاری نکرد» دیده می‌شد.
+#
+# راهِ بی‌دردسر: خودِ اسکریپت را یک بار دیگر با `tee` اجرا می‌کنیم. هیچ
+# وابستگی به /dev/fd، named pipe یا bashِ پیشرفته ندارد.
+if [[ -z "${KAVEH185_BACK_LOGGED:-}" && -r "$0" ]]; then
+  export KAVEH185_BACK_LOGGED=1
+  set +e
+  bash "$0" "${ORIG_ARGS[@]}" 2>&1 | tee -a "$LOG_FILE"
+  rc="${PIPESTATUS[0]}"
+  set -e
+  exit "$rc"
+fi
 
 say()  { printf '%s %s\n' "${TAG}" "$*"; }
 info() { say "${C_BLUE}•${C_RESET} $*"; }
@@ -214,6 +240,39 @@ if [[ $DRY_RUN -eq 0 ]]; then
   fi
 else
   info "[dry-run] پشتیبان‌گیری رد شد"
+fi
+
+# ── مسیرِ سریعِ «prep» ──────────────────────────────────────────────────────
+# `--prep` فقط همان چیزی را می‌رود که برای آپدیتِ کد لازم است: مهاجرت‌های
+# تازه + استاتیک + ری‌استارت. بکاپِ کامل، نصبِ وابستگی‌ها و دانه‌ریزی رد
+# می‌شوند تا آپدیتِ یک‌مرحله‌ای سریع و بی‌ریسک بماند (این سناریو در
+# `kaveh185-update.sh` استفاده می‌شود).
+if [[ $PREP -eq 1 ]]; then
+  step "۲/۴ · (prep) مهاجرت‌های تازه"
+  NEW_MIGRATIONS="$(py manage.py showmigrations --plan 2>/dev/null | grep -c '^\[ \]' || true)"
+  if [[ "${NEW_MIGRATIONS:-0}" == "0" ]]; then
+    ok "هیچ مهاجرتِ در انتظاری نیست — پایگاه‌داده به‌روز است"
+  else
+    info "«$NEW_MIGRATIONS» مهاجرت در انتظار است — اعمال می‌شود"
+    STAGE="migrate"; py manage.py migrate --noinput && ok "مهاجرت‌ها اعمال شد"
+  fi
+
+  step "۳/۴ · (prep) استاتیکِ ادمین/DRF"
+  STAGE="collectstatic"; py manage.py collectstatic --noinput --clear >/dev/null && ok "collectstatic انجام شد"
+
+  if [[ $DO_GALLERY -eq 1 ]]; then
+    step "۳٫۵/۴ · (prep) هم‌گام‌سازیِ گالری"
+    STAGE="seed_gallery"
+    if py manage.py seed_gallery --force; then ok "گالری با بستهٔ فرانتِ نصب‌شده هم‌گام شد"
+    else warn "گالری هم‌گام نشد — دستی: $VENV_DIR/bin/python manage.py seed_gallery --force"; fi
+  fi
+
+  step "۴/۴ · (prep) ری‌استارت + ثبت نسخهٔ سالم"
+  STAGE="restart"; call_passenger_restart
+  ( cd "$APP_DIR" && git rev-parse HEAD > .deploy-last-good ) || true
+  ok "ری‌استارت ثبت شد · نسخهٔ سالم: $(cd "$APP_DIR" && git rev-parse --short HEAD)"
+  info "گزارش: $LOG_FILE"
+  exit 0
 fi
 
 # ══════════════════════════════════════════════════════════════════════════════
