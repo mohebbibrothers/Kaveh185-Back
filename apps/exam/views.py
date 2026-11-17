@@ -84,9 +84,12 @@ class PublicLandingBootstrapAPIView(APIView):
         responses={200: OpenApiTypes.OBJECT},
     )
     def get(self, request: Request) -> Response:
-        """بازگرداندن وضعیت آزمون، لیست کشویی مساجد و لیدربورد زنده در یک پاسخ واحد."""
-        del request
-        payload = get_public_landing_bootstrap()
+        """بازگرداندن وضعیت آزمون، مساجد، لیدربورد و گالری در یک پاسخ واحد.
+
+        ⚠️ `del request` این‌جا غلط بود و حذف شد: گالری آدرس مطلق تصاویر را
+        از `request.build_absolute_uri` می‌سازد.
+        """
+        payload = get_public_landing_bootstrap(request)
         return success_response(
             data=payload,
             message="داده‌های یکپارچهٔ صفحهٔ اول مسابقه کاوه ۱۸۵ با موفقیت دریافت شد.",

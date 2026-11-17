@@ -84,8 +84,15 @@ def get_public_exam_status() -> dict[str, Any]:
     )
 
 
-def get_public_landing_bootstrap() -> dict[str, Any]:
-    """بستهٔ یکپارچهٔ صفحهٔ اول (وضعیت آزمون + لیست کشویی ۱۷ مسجد + رنکینگ زندهٔ مساجد)."""
+def get_public_landing_bootstrap(request: Any = None) -> dict[str, Any]:
+    """بستهٔ یکپارچهٔ صفحهٔ اول: وضعیت آزمون، مساجد، رنکینگ و گالری.
+
+    ⚠️ `request` عمداً پارامتر است: گالری برای ساختن **آدرس مطلق** تصویر به
+    آن نیاز دارد. نسخهٔ اول این پارامتر را دور می‌ریخت و تصاویر با آدرس
+    نسبی برمی‌گشتند؛ روی خودِ سایت کار می‌کرد ولی پیش‌نمایش در پیام‌رسان‌ها
+    و هر مصرف‌کنندهٔ دیگرِ همین API می‌شکست.
+    """
+    from apps.gallery.selectors import get_leader_gallery, get_martyrs
     from apps.mosques.selectors import (
         get_active_mosques_dropdown,
         get_mosque_leaderboard_snapshot,
@@ -101,6 +108,10 @@ def get_public_landing_bootstrap() -> dict[str, Any]:
         "exam_status": exam_status,
         "mosques": mosques,
         "leaderboard": leaderboard,
+        "gallery": {
+            "leader": get_leader_gallery(request),
+            "martyrs": get_martyrs(request),
+        },
     }
 
 

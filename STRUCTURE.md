@@ -9,7 +9,7 @@
 
 ## اپلیکیشن‌ها
 
-مجموع: **8 اپ** · 17 مدل · 10 مایگریشن · 54 ویو · 64 مسیر
+مجموع: **9 اپ** · 18 مدل · 12 مایگریشن · 57 ویو · 67 مسیر
 
 | اپ | مدل | مایگریشن | ویو | مسیر |
 |---|---:|---:|---:|---:|
@@ -18,6 +18,7 @@
 | `command_center` | 0 | 0 | 1 | 2 |
 | `core` | 4 | 1 | 2 | 3 |
 | `exam` | 6 | 3 | 14 | 17 |
+| `gallery` | 1 | 2 | 3 | 3 |
 | `mosques` | 1 | 2 | 5 | 5 |
 | `notifications` | 1 | 1 | 3 | 3 |
 | `reporting` | 0 | 0 | 6 | 10 |
@@ -123,6 +124,7 @@ Kaveh185-Back/apps/
 │   ├── frontend.py
 │   ├── idempotency.py
 │   ├── jalali.py
+│   ├── media.py
 │   ├── metrics.py
 │   ├── metrics_views.py
 │   ├── middleware.py
@@ -156,6 +158,18 @@ Kaveh185-Back/apps/
 │   ├── validators.py  # اعتبارسنج‌های قابل استفادهٔ مجدد (کدملی، موبایل، تاریخ جلالی)
 │   ├── views.py  # لایهٔ مرز HTTP و ارکستریشن
 │   └── views_book.py
+├── gallery/
+│   ├── management/
+│   ├── migrations/
+│   ├── tests/
+│   ├── __init__.py
+│   ├── admin.py
+│   ├── apps.py
+│   ├── models.py  # مدل‌های داده و قیود یکپارچگی دیتابیس
+│   ├── selectors.py  # خواندن داده و کوئری‌های بهینه‌شده (بدون side effect)
+│   ├── services.py  # منطق کسب‌وکار، تراکنش‌های اتمی و نوشتن
+│   ├── urls.py  # قرارداد مسیرهای API
+│   └── views.py  # لایهٔ مرز HTTP و ارکستریشن
 ├── mosques/
 │   ├── management/
 │   ├── migrations/
@@ -232,6 +246,7 @@ apps/core/
 ├── frontend.py
 ├── idempotency.py
 ├── jalali.py
+├── media.py
 ├── metrics.py
 ├── metrics_views.py
 ├── middleware.py

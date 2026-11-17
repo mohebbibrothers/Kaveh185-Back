@@ -4,13 +4,15 @@ from __future__ import annotations
 
 from django.conf import settings
 from django.contrib import admin
-from django.urls import include, path
+from django.http import FileResponse, Http404, HttpRequest
+from django.urls import include, path, re_path
 
 from apps.core.docs_gate import (
     GatedSpectacularAPIView,
     GatedSpectacularRedocView,
     GatedSpectacularSwaggerView,
 )
+from apps.core.media import serve_media
 from apps.core.metrics_views import PrometheusMetricsView
 from apps.core.responses import not_found_response
 from apps.core.views import APIRootDiscoveryView
@@ -18,6 +20,15 @@ from apps.core.views import APIRootDiscoveryView
 admin_url = str(getattr(settings, "ADMIN_URL_PATH", "secure-kaveh185-admin/")).lstrip("/")
 if not admin_url.endswith("/"):
     admin_url += "/"
+
+
+# ── رسانه ────────────────────────────────────────────────────────────────
+def serve_media_or_404(request: HttpRequest, path: str) -> FileResponse:
+    """سرو رسانه؛ اگر `MEDIA_ROOT` تنظیم نشده باشد، ۴۰۴ صریح (نه خطای ۵۰۰)."""
+    if not getattr(settings, "MEDIA_ROOT", None):
+        raise Http404("ریشهٔ رسانه تنظیم نشده است.")
+    return serve_media(request, path)
+
 
 urlpatterns = [
     # ریشهٔ دامنه دیگر JSON نمی‌دهد: `/` صفحهٔ اول خودِ سایت است و در صورت
@@ -39,8 +50,17 @@ urlpatterns = [
     path("api/v1/exam/", include("apps.exam.urls")),
     path("api/v1/reporting/", include("apps.reporting.urls")),
     path("api/v1/notifications/", include("apps.notifications.urls")),
+    path("api/v1/gallery/", include("apps.gallery.urls")),
     path("api/v1/audit-logs/", include("apps.audit_logs.urls")),
     path("api/v1/admin/command-center/", include("apps.command_center.urls")),
+    # ── رسانه ────────────────────────────────────────────────────────────
+    # مستقل از `DEBUG`: روی هاست `DEBUG=False` است و بدون این خط، تصاویر
+    # ادمین (گالری/شهدا) با ۴۰۴ برمی‌گردند. نمای اختصاصی، فقط تصویر و PDF.
+    re_path(
+        r"^media/(?P<path>.*)$",
+        serve_media_or_404,
+        name="media",
+    ),
     path(
         "api/v1/command-center/",
         include(("apps.command_center.urls", "command_center"), namespace="command_center_alias"),
