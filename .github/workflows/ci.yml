@@ -68,3 +68,76 @@ jobs:
 
       - name: Run Pytest Suite with Coverage Gate (>= 90%)
         run: python -m pytest --cov=apps --cov-report=term-missing --cov-fail-under=90
+
+  migrations-on-mariadb:
+    name: Migrations & Suite on MariaDB 11 (production engine parity)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    services:
+      mariadb:
+        image: mariadb:11.8
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_DATABASE: kaveh185_ci
+          MARIADB_USER: kaveh
+          MARIADB_PASSWORD: kaveh
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    env:
+      DB_ENGINE: django.db.backends.mysql
+      DB_NAME: kaveh185_ci
+      DB_USER: kaveh
+      DB_PASSWORD: kaveh
+      DB_HOST: 127.0.0.1
+      DB_PORT: "3306"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: "pip"
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt -r requirements-dev.txt
+
+      # ── چرا این جاب وجود دارد؟ ───────────────────────────────────────────
+      # موتور هاست MariaDB است، ولی تست‌ها روی SQLite اجرا می‌شدند. تفاوتِ
+      # رفتاریِ واقعی همین‌جا لو رفت: در MariaDB هر `DROP TABLE` تراکنش را
+      # commit می‌کند و جنگو DDLِ بعدی را «داخلِ تراکنش» می‌بیند و پیش از
+      # اجرا رد می‌کند — چیزی که روی SQLite هرگز رخ نمی‌دهد. مهاجرت
+      # `gallery.0002` روی هاست با `TransactionManagementError` شکست و
+      # جدولِ گالری نیمه‌کاره ماند.
+      #
+      # این گام همان سناریو را بازسازی می‌کند: اول شِمای «قدیمی» با ستونِ
+      # `order` ساخته می‌شود، بعد `migrate gallery` اجرا می‌شود (باگ اینجا
+      # خودش را نشان می‌داد)، بعد درجِ تازه، و در پایان کلِ مایگریشن از صفر.
+      - name: Migrate a legacy-schema database (the exact host scenario)
+        run: |
+          python scripts/build_legacy_gallery_db.py --database legacy_ci --drop
+          DB_NAME=legacy_ci python manage.py migrate gallery --noinput
+          DB_NAME=legacy_ci python manage.py shell -c "from apps.gallery.models import Martyr; rows = list(Martyr.objects.values_list('display_order', 'title')); assert rows == [(3, 'سیدشهدای مقاومت')], rows; Martyr.objects.create(image='gallery/martyrs/n.jpg', title='تازه'); assert Martyr.objects.filter(display_order=4).exists(); print('legacy rebuild OK:', rows)"
+
+      - name: Migrate everything from scratch on MariaDB (first run)
+        run: python manage.py migrate --noinput
+
+      - name: Migrate again — must be a no-op (idempotence)
+        run: python manage.py migrate --noinput
+
+      - name: Run the full suite on MariaDB
+        run: python -m pytest -q --cov=apps --cov-report=term-missing --cov-fail-under=90
