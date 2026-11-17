@@ -14,6 +14,9 @@
 #      --no-pull     بدون git pull (برای وقتی خودت کد را گذاشتی)
 #      --no-rollback بازگشت خودکار را خاموش کن (برای دیباگ)
 #      --seed        دانه‌ریزی اولیهٔ ۱۷ مسجد + تنظیمات + بانک سوال (فقط بار اول)
+#      --gallery     هم‌گام‌سازیِ تصاویر گالری/نوار شهدا با بستهٔ فرانتِ نصب‌شده
+#                    (همان `seed_gallery --force`؛ فقط رکوردهای خودِ دستور را
+#                    بازنویسی می‌کند و محتوای ادمین را دست نمی‌زند)
 #      --with-demo   همراه دانه‌ریزی، داده‌های دمو هم بیاید (فقط برای صحنهٔ تمرین!)
 #      --grant-admin «شماره|کدملی|رمز»  ساخت/به‌روزرسانی ادمین
 #      --force       ادامه بده حتی اگر check --deploy هشدار داد
@@ -43,7 +46,7 @@ HEALTH_URL="${KAVEH185_HEALTH_URL:-https://api.kaveh185.ir/api/v1/health/}"
 BACKUP_DIR="${KAVEH185_BACKUP_DIR:-$HOME/kaveh185-backups}"
 KEEP_BACKUPS="${KAVEH185_KEEP_BACKUPS:-5}"
 
-DRY_RUN=0; DO_PULL=1; ROLLBACK=1; DO_SEED=0; WITH_DEMO=0; FORCE=0
+DRY_RUN=0; DO_PULL=1; ROLLBACK=1; DO_SEED=0; WITH_DEMO=0; FORCE=0; DO_GALLERY=0
 GRANT_ADMIN=""
 
 # ── پارس آرگومان‌ها ─────────────────────────────────────────────────────────
@@ -53,6 +56,7 @@ while [[ $# -gt 0 ]]; do
     --no-pull) DO_PULL=0 ;;
     --no-rollback) ROLLBACK=0 ;;
     --seed) DO_SEED=1 ;;
+    --gallery) DO_GALLERY=1 ;;
     --with-demo) DO_SEED=1; WITH_DEMO=1 ;;
     --grant-admin) GRANT_ADMIN="${2:-}"; shift ;;
     --force) FORCE=1 ;;
@@ -281,6 +285,24 @@ if [[ $DO_SEED -eq 1 ]]; then
   ok "دانه‌ریزی انجام شد (۱۷ مسجد + تنظیمات + بانک سوال)"
 else
   info "دانه‌ریزی رد شد (برای بار اول: --seed)"
+fi
+
+# ── هم‌گام‌سازیِ گالری (نوار شهدا + تصاویر رهبر) ────────────────────────────
+# چرا این‌جا؟ فایل‌های تصویرِ گالری از **بستهٔ فرانتِ نصب‌شده** کپی می‌شوند
+# (`frontend/img/…`). پس ترتیبِ درست در استقرارِ یک‌مرحله‌ای این است: اول
+# فرانت، بعد بک‌اند. اگر این گام نباشد و بستهٔ فرانت نامِ فایل‌هایش عوض شده
+# باشد، نوارِ شهدا بی‌صدا خالی می‌ماند — دقیقاً همان اتفاقی که در دورِ ۱۵
+# افتاد. عمداً **غیرمرگ‌بار** است: گالری جزو مسیرِ حیاتیِ سرویس نیست و
+# شکستش نباید استقرارِ موفق را به «ناموفق» تبدیل کند.
+if [[ $DO_GALLERY -eq 1 ]]; then
+  STAGE="seed_gallery"
+  if py manage.py seed_gallery --force; then
+    ok "گالری با بستهٔ فرانتِ نصب‌شده هم‌گام شد"
+  else
+    warn "هم‌گام‌سازیِ گالری انجام نشد — دستی: $VENV_DIR/bin/python manage.py seed_gallery --force"
+  fi
+else
+  info "هم‌گام‌سازیِ گالری رد شد (برای اجرا: --gallery)"
 fi
 
 if [[ -n "$GRANT_ADMIN" ]]; then
