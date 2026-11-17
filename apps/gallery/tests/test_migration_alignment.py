@@ -293,15 +293,3 @@ def test_rebuild_drops_a_leftover_backup_table(probe: Probe) -> None:
 
     assert backup not in _tables(probe.path)
     assert "display_order" in _columns(probe.path, "gallery_martyr")
-
-
-def test_align_columns_skips_tables_that_do_not_exist(tmp_path: Path) -> None:
-    """پایگاه‌دادهٔ خالی: نه استثنا، نه خطا."""
-    path = tmp_path / "empty.sqlite3"
-    with _connect(path):
-        pass
-
-    with Probe(path) as installed, installed.wrapper.schema_editor(atomic=False) as editor:
-        MODULE.align_columns(_apps(), editor)
-
-    assert _tables(path) == {"sqlite_sequence"} or _tables(path) == set()

@@ -206,7 +206,18 @@ def align_columns(apps: Any, schema_editor: Any) -> None:
         table = model._meta.db_table
 
         if not _table_exists(schema_editor, table):
-            # جدول نیست ⇒ `0001_initial` ساخته است؛ کاری لازم نیست.
+            # دو حالت:
+            #   ۱) پایگاه‌دادهٔ تازه: `0001_initial` همین الان جدول را ساخت.
+            #   ۲) اجرای ناموفقِ *قبلیِ همین* مهاجرت روی MariaDB (سناریوی
+            #      واقعیِ هاست): `DROP TABLE` انجام شده ولی `CREATE TABLE`
+            #      رد شده؛ پس جدول نیست و ردیفی هم نیست.
+            #
+            # حالتِ ۲ باید خودش را درمان کند، وگرنه بعد از استقرار `no such
+            # table: gallery_leaderportrait` می‌گیریم. `create_model` روی
+            # جدولِ موجود بی‌خطر نیست (خطا می‌دهد)، ولی اینجا مطمئنیم جدول
+            # نیست. `IF NOT EXISTS` هم لازم نیست چون وجودش را چک کردیم.
+            schema_editor.create_model(model)
+            _log(f"  گالری: جدولِ گم‌شده «{table}» از نو ساخته شد ✔")
             continue
 
         existing = _columns(schema_editor, table)

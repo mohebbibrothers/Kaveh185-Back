@@ -129,12 +129,14 @@ jobs:
       # خودش را نشان می‌داد)، بعد درجِ تازه، و در پایان کلِ مایگریشن از صفر.
       - name: Migrate a legacy-schema database (the exact host scenario)
         run: |
-          python scripts/build_legacy_gallery_db.py --database legacy_ci --drop
-          DB_NAME=legacy_ci python manage.py migrate gallery --noinput
-          DB_NAME=legacy_ci python manage.py shell -c "from apps.gallery.models import Martyr; rows = list(Martyr.objects.values_list('display_order', 'title')); assert rows == [(3, 'سیدشهدای مقاومت')], rows; Martyr.objects.create(image='gallery/martyrs/n.jpg', title='تازه'); assert Martyr.objects.filter(display_order=4).exists(); print('legacy rebuild OK:', rows)"
+          python scripts/build_legacy_gallery_db.py --reset
+          python manage.py migrate gallery --noinput
+          python manage.py shell -c "from apps.gallery.models import Martyr; rows = list(Martyr.objects.values_list('display_order', 'title')); assert rows == [(3, 'سیدشهدای مقاومت')], rows; Martyr.objects.create(image='gallery/martyrs/n.jpg', title='تازه'); assert Martyr.objects.filter(display_order=4).exists(); print('legacy rebuild OK:', rows)"
 
       - name: Migrate everything from scratch on MariaDB (first run)
-        run: python manage.py migrate --noinput
+        run: |
+          python scripts/build_legacy_gallery_db.py --wipe-all
+          python manage.py migrate --noinput
 
       - name: Migrate again — must be a no-op (idempotence)
         run: python manage.py migrate --noinput
