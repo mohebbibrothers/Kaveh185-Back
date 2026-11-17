@@ -65,10 +65,12 @@ mkdir -p "$LOG_DIR"
 # می‌کشت. راهِ بی‌دردسر: خودِ اسکریپت را دوباره با `tee` اجرا می‌کنیم؛ هیچ
 # وابستگی به /dev/fd یا named pipe نمی‌ماند.
 if [[ -z "${K185_UPDATE_LOGGED:-}" ]]; then
-  if [[ -r "$0" ]]; then
+  # مسیرِ مطلق تا اجرای دوباره از هر پوشه‌ای درست باشد
+  SELF="$(cd "$(dirname "$0")" 2>/dev/null && pwd)/$(basename "$0")"
+  if [[ -r "$SELF" ]]; then
     export K185_UPDATE_LOGGED=1
     set +e
-    bash "$0" "$@" 2>&1 | tee -a "$LOG"
+    bash "$SELF" "$@" 2>&1 | tee -a "$LOG"
     rc="${PIPESTATUS[0]}"
     set -e
     exit "$rc"
