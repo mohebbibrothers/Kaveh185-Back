@@ -61,23 +61,27 @@ LEADER_ITEMS: tuple[dict[str, str], ...] = (
 )
 
 MARTYR_ITEMS: tuple[dict[str, str], ...] = (
+    # ⚠️ نامِ فایل‌ها با `probe/build_front_assets.py` هم‌گام است. نسخهٔ PNG/JPGِ
+    # قبلی (`kaveh-hero.jpg`, `icon-face.png`, `emblem-portrait-sm.jpg`) در دورِ
+    # ۱۵ از بستهٔ فرانت حذف شد؛ اگر seed به آن‌ها تکیه می‌کرد، روی نصبِ تازه
+    # نوارِ شهدا خالی می‌ماند. این سه، همان نشانِ شفاف در سه قاب است.
     {
-        "source_file": "kaveh-hero.jpg",
-        "target": "gallery/martyrs/kaveh-square.jpg",
+        "source_file": "emblem-avatar.webp",
+        "target": "gallery/martyrs/kaveh-portrait.webp",
         "title": "سیدشهدای مقاومت",
         "subtitle": "شهید محمود کاوه — فرماندهٔ لشکر ویژهٔ ۱۵۵ شهدا",
     },
     {
-        "source_file": "icon-face.png",
-        "target": "gallery/martyrs/kaveh-face.jpg",
-        "title": "شهیدِ حوزهٔ ۱۸۵",
-        "subtitle": "یادبود شهیدانِ حوزهٔ مقاومت بسیج ۱۸۵",
-    },
-    {
-        "source_file": "emblem-portrait-sm.jpg",
-        "target": "gallery/martyrs/kaveh-emblem.jpg",
+        "source_file": "emblem-mark.webp",
+        "target": "gallery/martyrs/kaveh-emblem.webp",
         "title": "به یادِ کاوه",
         "subtitle": "نشانِ حوزهٔ مقاومت بسیج ۱۸۵ شهید کاوه",
+    },
+    {
+        "source_file": "emblem-head.webp",
+        "target": "gallery/martyrs/kaveh-head.webp",
+        "title": "شهیدِ حوزهٔ ۱۸۵",
+        "subtitle": "یادبود شهیدانِ حوزهٔ مقاومت بسیج ۱۸۵",
     },
 )
 

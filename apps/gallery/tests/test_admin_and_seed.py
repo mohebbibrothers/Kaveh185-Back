@@ -237,14 +237,12 @@ def frontend_bundle(settings: Any, tmp_path: Path) -> Path:
     for name in (
         "emam-reading.jpg",
         "emam-reading-sm.jpg",
-        "kaveh-hero.jpg",
-        "icon-face.png",
-        "emblem-portrait-sm.jpg",
+        "emblem-avatar.webp",
+        "emblem-mark.webp",
+        "emblem-head.webp",
     ):
         buf = io.BytesIO()
-        Image.new("RGB", (24, 24), (40, 80, 120)).save(
-            buf, format="PNG" if name.endswith(".png") else "JPEG"
-        )
+        Image.new("RGB", (24, 24), (40, 80, 120)).save(buf, format="WEBP")
         (img / name).write_bytes(buf.getvalue())
     settings.FRONTEND_DIST = str(tmp_path / "dist")
     return img

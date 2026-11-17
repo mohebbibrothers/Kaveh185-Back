@@ -61,7 +61,8 @@ def _make_front(tmp_path: Path, *, with_assets: bool = True) -> Path:
 
         img = root / "img"
         img.mkdir()
-        (img / "kaveh-hero.jpg").write_bytes(b"\xff\xd8\xff\xe0fake-jpeg")
+        (img / "emblem-mark.webp").write_bytes(b"RIFF0000WEBPfake")
+        (img / "kaveh-photo.jpg").write_bytes(b"\xff\xd8\xff\xe0fake-jpeg")
 
     return root
 
@@ -126,9 +127,13 @@ def test_trailing_slash_redirect_keeps_query(front_root: Path) -> None:
 def test_asset_without_slash_is_not_redirected(front_root: Path) -> None:
     """فایل‌ها (تصویر/CSS) نباید به نسخهٔ اسلش‌دار هدایت شوند."""
     with override_settings(FRONTEND_DIST=str(front_root)):
-        resp = _client().get("/img/kaveh-hero.jpg")
+        resp = _client().get("/img/kaveh-photo.jpg")
+        # webp هم باید درست سرو شود (دارایی‌های تازهٔ نشان در دورِ ۱۵)
+        resp_webp = _client().get("/img/emblem-mark.webp")
     assert resp.status_code == 200
     assert resp["Content-Type"].startswith("image/jpeg")
+    assert resp_webp.status_code == 200
+    assert resp_webp["Content-Type"].startswith("image/webp")
 
 
 # ── دارایی‌ها و کش ────────────────────────────────────────────────────────
