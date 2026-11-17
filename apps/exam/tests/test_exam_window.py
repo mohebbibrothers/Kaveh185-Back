@@ -15,9 +15,11 @@ from __future__ import annotations
 
 from datetime import timedelta
 from io import StringIO
+from pathlib import Path
 
 import pytest
 from django.core.management import CommandError, call_command
+from django.test import Client
 from django.utils import timezone
 
 from apps.exam.management.commands.set_exam_window import _jalali_to_gregorian
@@ -167,3 +169,43 @@ class TestGregorianInput:
         end_local = timezone.localtime(config.ends_at, tz)
         assert (end_local.year, end_local.month, end_local.day) == (2026, 11, 26)
         assert end_local.hour == 23
+
+
+class TestBookFileEmbeddingHeaders:
+    """فایل کتاب باید در iframeِ همان دامنه قابلِ نمایش باشد.
+
+    ── چرا این تست؟
+    صفحهٔ «مطالعهٔ کتاب» فایل را با `<iframe>` نشان می‌دهد. تا پیش از این
+    اصلاح، `X-Frame-Options: DENY` سراسری روی همین پاسخ می‌نشست و خواننده
+    فقط یک کادرِ سفید بود — یعنی مسیرِ مطالعه عملاً کار نمی‌کرد. این تست
+    جلوی برگشتِ آن باگ را می‌گیرد: `SAMEORIGIN` (نه `DENY`) و
+    `frame-ancestors 'self'` (نه `'none'`).
+    """
+
+    @pytest.mark.django_db
+    def test_book_file_allows_same_origin_frame(self, tmp_path: Path) -> None:
+        """پاسخِ فایل کتاب قاب‌شدن در همان دامنه را مجاز می‌کند."""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        from apps.exam.models import BookFile
+
+        pdf = tmp_path / "book.pdf"
+        pdf.write_bytes(b"%PDF-1.4\n%test\n")
+        BookFile.objects.create(
+            title="شهادت آیه‌ها",
+            slug="embed-test",
+            is_published=True,
+            file=SimpleUploadedFile("book.pdf", pdf.read_bytes(), content_type="application/pdf"),
+        )
+
+        client = Client()
+        response = client.get("/api/v1/exam/book/embed-test/file/")
+
+        assert response.status_code == 200
+        # بدنه را مصرف و بسته می‌کنیم؛ وگرنه فایلِ باز در `/tmp` باز می‌ماند
+        # و pytest هشدارِ «resource warning» می‌دهد.
+        b"".join(response.streaming_content)
+        response.close()
+
+        assert response["X-Frame-Options"] == "SAMEORIGIN"
+        assert "frame-ancestors 'self'" in response["Content-Security-Policy"]

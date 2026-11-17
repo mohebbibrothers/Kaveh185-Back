@@ -12,6 +12,17 @@
   • `X-Robots-Tag: noindex` می‌گذارد تا نسخه‌های قدیمی در گوگل ایندکس
     نشوند؛
   • فایل‌های EPUB را با `application/epub+zip` می‌فرستد.
+
+── چرا `X-Frame-Options: SAMEORIGIN` صریحاً روی فایل کتاب گذاشته می‌شود؟
+─────────────────────────────────────────────────────────────────────────────
+صفحهٔ «مطالعهٔ کتاب» فایل را در یک `<iframe>` نشان می‌دهد. سندِ HTML سایت
+`frame-ancestors 'none'` دارد، ولی آن سیاست **وارثِ iframe نیست** — یعنی
+محدودیتِ فریم برای خودِ سایت اعمال می‌شود، نه برای فایلِ PDF. تا امروز
+`X-Frame-Options: DENY` سراسری (روی همین پاسخ) جلوی نمایش را می‌گرفت و
+کاربر در کادرِ مطالعه فقط «صفحه سفید» می‌دید. `SAMEORIGIN` همان امنیت را
+می‌دهد (هیچ دامنهٔ بیگانه‌ای نمی‌تواند کتاب را قاب کند) و مسیرِ مطالعه را باز
+می‌کند. عمداً از `django.views.decorators.clickjacking.xframe_options_sameorigin`
+استفاده نمی‌کنیم تا وابستگی به ترتیبِ میان‌افزارها نداشته باشیم.
 """
 
 from __future__ import annotations
@@ -108,6 +119,9 @@ class PublicBookFileView(APIView):
         response["Content-Disposition"] = f'inline; filename="{quoted}"'
         response["Cache-Control"] = "public, max-age=300"
         response["X-Robots-Tag"] = "noindex"
+        # خوانندهٔ درون‌صفحه‌ای (iframe) روی همین دامنه مجاز است؛ بیگانه نه.
+        response["X-Frame-Options"] = "SAMEORIGIN"
+        response["Content-Security-Policy"] = "frame-ancestors 'self'"
         return response
 
 
@@ -148,4 +162,7 @@ def book_download_view(request: HttpRequest, slug: str) -> FileResponse:
     )
     response["Content-Disposition"] = f'inline; filename="{Path(book.file.name).name}"'
     response["X-Robots-Tag"] = "noindex"
+    # همان دلیلِ نمای DRF بالا: مطالعه در iframe همان دامنه باید کار کند.
+    response["X-Frame-Options"] = "SAMEORIGIN"
+    response["Content-Security-Policy"] = "frame-ancestors 'self'"
     return response
