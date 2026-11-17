@@ -191,7 +191,23 @@ class Command(BaseCommand):
     # ── کمکی‌ها ────────────────────────────────────────────────────────────
     @staticmethod
     def _frontend_img_root() -> Path | None:
-        """پوشهٔ تصاویر فرانت، اگر وجود دارد."""
+        """پوشهٔ تصاویر فرانت.
+
+        ── ترتیبِ جست‌وجو (درسِ استقرارِ واقعی روی هاست) ─────────────────
+        اول `FRONTEND_DIST`، بعد پیش‌فرض‌ها. روی هاست، `FRONTEND_DIST` یک
+        **سیم‌لینک** به `current` است که `front-deploy.sh` با هر استقرار
+        اتمی جابه‌جایش می‌کند؛ اگر به آن اتکا نکنیم و فقط
+        `<BASE_DIR>/frontend/img` را ببینیم، ممکن است به نسخهٔ قدیمی یا
+        مسیرِ ناموجود بخوریم.
+
+        و اگر `img/` سرِ جایش نبود، **در عمقِ خروجی جست‌وجو می‌کنیم**: ساختِ
+        بعدی ممکن است تصاویر را زیر `_next/static/…` بگذارد یا نامِ پوشه
+        عوض شود. هزینه‌اش چند `os.scandir` است و فایده‌اش این است که
+        `seed_gallery` بی‌صدا یکی از تصاویر را جا نمی‌گذارد — همان چیزی که
+        یک بار روی هاست اتفاق افتاد:
+
+            ! فایل emblem-portrait-sm.jpg پیدا نشد — رد شد.
+        """
         candidates: list[Path] = []
         dist = getattr(settings, "FRONTEND_DIST", "") or ""
         if dist:
@@ -201,6 +217,18 @@ class Command(BaseCommand):
         for candidate in candidates:
             if candidate.is_dir():
                 return candidate
+
+        # آخرین تلاش: پوشه‌ای به نام `img` در دو سطحِ اولِ خروجی.
+        dist_root = Path(str(dist)) if dist else Path(str(settings.BASE_DIR)) / "frontend"
+        if dist_root.is_dir():
+            for depth_one in sorted(dist_root.iterdir()):
+                if not depth_one.is_dir():
+                    continue
+                if depth_one.name == "img":
+                    return depth_one
+                for depth_two in sorted(depth_one.iterdir()):
+                    if depth_two.is_dir() and depth_two.name == "img":
+                        return depth_two
         return None
 
     @staticmethod

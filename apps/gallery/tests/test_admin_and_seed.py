@@ -311,6 +311,32 @@ def test_seed_survives_a_missing_image_folder(settings: Any, _isolated_media: Pa
 
 
 @pytest.mark.django_db
+def test_seed_finds_images_in_a_nested_img_folder(
+    settings: Any, tmp_path: Path, _isolated_media: Path
+) -> None:
+    """اگر `img/` جای پیش‌فرض نباشد، در عمقِ خروجی پیدا می‌شود.
+
+    روی هاست دقیقاً همین اتفاق افتاد: یکی از تصاویر (`emblem-portrait-sm.jpg`)
+    «پیدا نشد» و بی‌صدا رد شد. حالا جست‌وجو به عمقِ دو سطح می‌رود تا گم نشود.
+    """
+    nested = tmp_path / "dist" / "static" / "img"
+    nested.mkdir(parents=True)
+    buf = io.BytesIO()
+    Image.new("RGB", (24, 24), (9, 9, 9)).save(buf, format="JPEG")
+    for name in ("emam-reading.jpg", "emam-reading-sm.jpg"):
+        (nested / name).write_bytes(buf.getvalue())
+    settings.FRONTEND_DIST = str(tmp_path / "dist")
+    # `BASE_DIR/frontend/img` روی هاست وجود دارد؛ اینجا هم آن را از معادله
+    # بیرون می‌بریم تا فقط مسیرِ «جست‌وجوی عمقی» سنجیده شود.
+    settings.BASE_DIR = tmp_path / "no-bundle-here"
+
+    call_command("seed_gallery", verbosity=0)
+
+    assert LeaderPortrait.all_objects.count() == 2  # هر دو تصویرِ رهبر
+    assert Martyr.all_objects.count() == 0  # هیچ فایلِ شهیدی نبود
+
+
+@pytest.mark.django_db
 def test_seed_skips_an_item_whose_file_is_missing(
     settings: Any, tmp_path: Path, _isolated_media: Path
 ) -> None:
