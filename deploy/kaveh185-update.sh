@@ -234,13 +234,13 @@ martyrs_n="$(curl -fsS -m 20 "$S/api/v1/gallery/" 2>/dev/null | grep -o '"title"
 if [[ "${martyrs_n:-0}" -ge 1 ]]; then ok "یادوارهٔ شهدا: API «$martyrs_n» شهید برمی‌گرداند (نوار کلاینت‌ساید ساخته می‌شود)"
 else err "API گالری هیچ شهیدی برنمی‌گرداند — نوار خالی می‌ماند"; fi
 has "$S/" "رتبه‌بندی مساجد" "دکمهٔ «رتبه‌بندی مساجد» در هیرو هست"
-has "$S/api/v1/gallery/" "martyrs" "API گالری، شهدا را برمی‌گرداند"
+has "$S/api/v1/gallery/" "martyrs" "API گالری شهدا را در پاسخ دارد"
 gallery_imgs="$(curl -fsS -m 20 "$S/api/v1/gallery/" 2>/dev/null | grep -o 'martyrs/[a-z-]*\.webp' | sort -u | tr '\n' ' ' || true)"
 if printf '%s' "$gallery_imgs" | grep -q 'kaveh-portrait.webp'; then
   ok "تصاویرِ نوارِ شهدا با فایل‌های تازه‌اند ($gallery_imgs)"
 else
   warn "تصاویرِ نوارِ شهدا هنوز قدیمی‌اند: ${gallery_imgs:-—}"
-  warn "دستی: cd $APP_DIR && .venv/bin/python manage.py seed_gallery --force   (یا مسیرِ venv خودت)"
+  warn "دستی: cd $APP_DIR && ./deploy/run-manage.sh seed_gallery --force"
 fi
 book_file="$(curl -fsS -m 20 "$S/api/v1/exam/book/" 2>/dev/null | grep -o '"/api/v1/exam/book/[^"]*file/"' | tr -d '"' | head -1 || true)"
 frame_hdr="$(curl -fsSI -m 15 "$S${book_file:-/api/v1/exam/book/}" 2>/dev/null | tr -d '\r' | awk -F': ' 'tolower($1)=="x-frame-options"{print $2; exit}')"
