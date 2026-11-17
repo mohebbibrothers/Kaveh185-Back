@@ -115,12 +115,17 @@ class _Build:
     sha: str = ""
     built_at: str = ""
     version: str = ""
+    # شناسهٔ کامیتِ فرانت (از `BUILD_INFO.json`) — اسکریپت استقرار با همین
+    # مقدار تطبیق می‌دهد که بستهٔ تازه واقعاً سرو می‌شود یا نه.
+    commit: str = ""
 
     def header(self) -> str:
         """مقدار سرآیند `X-Frontend-Build` — برای عیب‌یابی و راستی‌آزمایی استقرار."""
         if not self.sha:
             return "unknown"
         parts = [self.version] if self.version else []
+        if self.commit:
+            parts.append(self.commit)
         parts.append(self.sha[:12])
         return " ".join(parts)
 
@@ -175,6 +180,7 @@ def _read_build(root: Path) -> _Build:
         sha=str(data.get("sha256_index", "")),
         built_at=str(data.get("built_at", "")),
         version=str(data.get("version", "")),
+        commit=str(data.get("commit", "")),
     )
 
 
@@ -534,6 +540,7 @@ def frontend_status() -> dict[str, Any]:
         "installed": True,
         "root": str(root),
         "version": build.version,
+        "commit": build.commit,
         "built_at": build.built_at,
         "sha": build.sha[:12],
     }

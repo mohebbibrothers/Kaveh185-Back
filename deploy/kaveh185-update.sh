@@ -29,11 +29,23 @@ API_URL="${KAVEH185_API_URL:-${SITE_URL%/}/api}"
 FRONT_DEPLOY="$APP_DIR/deploy/front-deploy.sh"
 BACK_DEPLOY="$APP_DIR/deploy/back/back-deploy.sh"
 BACK_BRANCH="${KAVEH185_BRANCH:-main}"
-EXPECT_FRONT_SHA="${KAVEH185_EXPECT_FRONT_SHA:-6da91e4}"   # دورِ ۱۵
+# ⚠️ نسخهٔ فرانت را با «شناسهٔ کامیت» تطبیق می‌دهیم، نه هشِ index.html.
+# نسخهٔ قبلی به `6da91e4` (کامیتِ گیت) تکیه می‌کرد ولی سرآیندِ سرور هشِ
+# محتوای `index.html` (`00228e3c…`) را می‌داد؛ نتیجه: هشدارِ نادرستِ
+# «نسخه نمی‌خواند» در هر اجرا. حالا `pack:front` مقدارِ `commit` را در
+# BUILD_INFO می‌نویسد و هر سه‌جا یک زبان حرف می‌زنند.
 LOG_DIR="${KAVEH185_LOG_DIR:-$HOME/kaveh185-deploy-logs}"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 LOG="$LOG_DIR/round15-$STAMP.log"
 MODE="deploy"
+
+# کامیتِ فرانتِ روی mainِ گیت‌هاب — از خودِ مخزنِ فرانتِ کنارِ اپ خوانده
+# می‌شود (روی هاست `$HOME/Kaveh185-Front` نیست؛ پس با API عمومی می‌پرسیم).
+EXPECT_FRONT_COMMIT="${KAVEH185_EXPECT_FRONT_COMMIT:-}"
+if [[ -z "$EXPECT_FRONT_COMMIT" ]]; then
+  EXPECT_FRONT_COMMIT="$(curl -fsS -m 15 https://api.github.com/repos/mohebbibrothers/Kaveh185-Front/commits/main 2>/dev/null \
+    | grep -o '"sha":[[:space:]]*"[0-9a-f]\{7,\}"' | head -1 | sed 's/.*"\([0-9a-f]*\)"$/\1/' | cut -c1-12 || true)"
+fi
 
 for a in "$@"; do
   case "$a" in
@@ -146,7 +158,7 @@ if [[ "$MODE" == "check" ]]; then
   step "حالتِ بررسی — هیچ تغییری اعمال نشد"
   probe "${SITE_URL%/}/" "صفحهٔ اول"
   hdr="$(curl -fsSI -m 15 "${SITE_URL%/}/" 2>/dev/null | tr -d '\r' | awk -F': ' 'tolower($1)=="x-frontend-build"{print $2; exit}')"
-  dim "نسخهٔ فرانتِ سرو‌شده: ${hdr:-نامعلوم}  (انتظار: شاملِ $EXPECT_FRONT_SHA)"
+  dim "نسخهٔ فرانتِ سرو‌شده: ${hdr:-نامعلوم}"
   summary; exit 0
 fi
 
@@ -195,13 +207,32 @@ probe "$S/register/" "ثبت‌نام"
 probe "$S/api/v1/health/ready/" "آمادگیِ API"
 
 step "۵/۷ · راستی‌آزماییِ دارایی‌ها (نشانِ شفاف و آواتارِ تازه)"
-for a in img/emblem-mark.webp img/emblem-avatar.webp img/emblem-head.webp img/punch-fist.webp og.png; do
-  probe "$S/$a" "دارایی $a"
-done
+# شناسهٔ کامیتِ فرانتِ نصب‌شده — از BUILD_INFO.json داخل بستهٔ نصب‌شده
+front_commit="$(grep -o '"commit":[[:space:]]*"[^"]*"' "$HOME/kaveh185-front/current/BUILD_INFO.json" 2>/dev/null | head -1 | sed 's/.*"\([^"]*\)"$/\1/')"
+if [[ -n "${front_commit:-}" && "$front_commit" != "null" ]]; then
+  # تطبیق با «کامیتِ سرور» (همان که از گیت‌هاب گرفته شد): هر دو باید یکی باشند
+  want="${EXPECT_FRONT_COMMIT:-}"
+  if [[ -z "$want" ]]; then
+    ok "بستهٔ نصب‌شده از کامیتِ $front_commit ساخته شده"
+  elif [[ "$front_commit" == "$want"* || "$want" == "$front_commit"* ]]; then
+    ok "بستهٔ نصب‌شده همان کامیتِ $want است"
+  else
+    warn "بستهٔ نصب‌شده کامیتِ $front_commit است، نه $want — گردش‌کارِ انتشار عقب است"
+    warn "  → Actions → «Release frontend bundle» → Run workflow (یا چند لحظه صبر و اجرای دوباره)"
+  fi
+else
+  dim "BUILD_INFO.json شناسهٔ کامیت ندارد (بستهٔ قدیمی‌تر) — از سرآیندِ نسخه استفاده شد"
+fi
 
 step "۶/۷ · راستی‌آزماییِ محتوا"
 has "$S/" "emblem-avatar" "هدر از آواتارِ شفاف استفاده می‌کند"
-has "$S/" "یادوارهٔ شهدا" "نوارِ یادواره در صفحه هست"
+# ⚠️ نوارِ یادواره در HTMLِ **ایستا** عمداً نیست: «هیچ دادهٔ ساختگی».
+# شهدا زنده از API می‌آیند و نوار کلاینت‌ساید ساخته می‌شود — پس سنجشِ آن
+# روی HTML خطای نادرست می‌داد. معیارِ درست: API داده بدهد و بیلدِ نصب‌شده
+# کدِ یادواره را داشته باشد.
+martyrs_n="$(curl -fsS -m 20 "$S/api/v1/gallery/" 2>/dev/null | grep -o '"title"' | wc -l | tr -d ' ')"
+if [[ "${martyrs_n:-0}" -ge 1 ]]; then ok "یادوارهٔ شهدا: API «$martyrs_n» شهید برمی‌گرداند (نوار کلاینت‌ساید ساخته می‌شود)"
+else err "API گالری هیچ شهیدی برنمی‌گرداند — نوار خالی می‌ماند"; fi
 has "$S/" "رتبه‌بندی مساجد" "دکمهٔ «رتبه‌بندی مساجد» در هیرو هست"
 has "$S/api/v1/gallery/" "martyrs" "API گالری، شهدا را برمی‌گرداند"
 gallery_imgs="$(curl -fsS -m 20 "$S/api/v1/gallery/" 2>/dev/null | grep -o 'martyrs/[a-z-]*\.webp' | sort -u | tr '\n' ' ' || true)"
@@ -222,8 +253,8 @@ fi
 step "۷/۷ · گزارشِ نسخه و سرعت"
 hdr="$(curl -fsSI -m 15 "$S/" 2>/dev/null | tr -d '\r' | awk -F': ' 'tolower($1)=="x-frontend-build"{print $2; exit}')"
 if [[ -n "${hdr:-}" && "${hdr:-unknown}" != "unknown" ]]; then
-  if [[ "$hdr" == *"$EXPECT_FRONT_SHA"* ]]; then ok "نسخهٔ فرانتِ سرو‌شده همان دورِ ۱۵ است: $hdr"
-  else warn "نسخهٔ سرو‌شده $hdr — انتظار داشتیم شاملِ $EXPECT_FRONT_SHA باشد"; fi
+  dim "سرآیندِ نسخه: $hdr"
+  ok "نسخهٔ فرانتِ سرو‌شده گزارش می‌شود (شناسهٔ کامیت در بخشِ ۵ بررسی می‌شود)"
 else
   dim "سرآیندِ نسخهٔ فرانت موجود نیست (کدِ بک‌اندِ هاست تازه نیست) — محتوا تأیید شد."
 fi

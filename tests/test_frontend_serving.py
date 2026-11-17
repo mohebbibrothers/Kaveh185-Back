@@ -42,7 +42,8 @@ def _make_front(tmp_path: Path, *, with_assets: bool = True) -> Path:
     (root / "404.html").write_text("<html><body>۴۰۴</body></html>", "utf-8")
     (root / "robots.txt").write_text("User-agent: *\n", "utf-8")
     (root / "BUILD_INFO.json").write_text(
-        '{"version": "9.9.9", "sha256_index": "abcdef1234567890", "built_at": "2026-01-01"}',
+        '{"version": "9.9.9", "sha256_index": "abcdef1234567890", "built_at": "2026-01-01", '
+        '"commit": "c0ffee12dead"}',
         "utf-8",
     )
 
@@ -171,6 +172,9 @@ def test_build_header_reports_served_version(front_root: Path) -> None:
         resp = _client().get("/")
     assert "9.9.9" in resp["X-Frontend-Build"]
     assert "abcdef123456" in resp["X-Frontend-Build"]
+    # شناسهٔ کامیت هم باید در همان سرآیند باشد؛ اسکریپتِ به‌روزرسانی روی
+    # هاست با همین تطبیق می‌دهد که «نسخهٔ گیت» سرو می‌شود یا نه.
+    assert "c0ffee12dead" in resp["X-Frontend-Build"]
 
 
 # ── مرز API و بک‌اند ─────────────────────────────────────────────────────
