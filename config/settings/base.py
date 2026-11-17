@@ -120,7 +120,6 @@ LOCAL_APPS = [
     "apps.exam",
     "apps.notifications",
     "apps.reporting",
-    "apps.gallery",
     "apps.command_center",
 ]
 

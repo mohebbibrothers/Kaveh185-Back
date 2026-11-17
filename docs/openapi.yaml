@@ -1032,74 +1032,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/ActiveAttemptOutput'
           description: ''
-  /api/v1/exam/book/:
-    get:
-      operationId: exam_book_retrieve
-      description: |-
-        اگر کتابی منتشر نشده باشد، ۴۰۴ با پیام روشن برمی‌گردد.
-
-        چرا ۴۰۴ و نه یک شیء خالی؟ چون فرانت باید بتواند «هیچ کتابی نیست»
-        را از «کتاب هست ولی بارگیری نشد» تفکیک کند و پوستهٔ صادقانه نشان
-        دهد. یک پاسخ ۲۰۰ با `null` این تفکیک را از بین می‌برد.
-      summary: متادیتای کتاب مسابقه (اگر ادمین منتشر کرده باشد)
-      tags:
-      - Book
-      security:
-      - {}
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PublicBook'
-          description: ''
-        '404':
-          description: No response body
-  /api/v1/exam/book/{slug}/file/:
-    get:
-      operationId: exam_book_file_retrieve
-      description: جریان فایل کتاب با سرآیندهای امن.
-      summary: دریافت فایل کتاب (PDF/EPUB) برای مطالعه
-      parameters:
-      - in: path
-        name: slug
-        schema:
-          type: string
-        required: true
-      tags:
-      - Book
-      security:
-      - {}
-      responses:
-        '200':
-          content:
-            application/pdf:
-              schema:
-                type: string
-                format: binary
-          description: ''
-  /api/v1/exam/book/{slug}/view/:
-    post:
-      operationId: exam_book_view_create
-      description: یک واحد به شمارندهٔ بازدید اضافه می‌کند.
-      summary: ثبت بازدید مطالعهٔ کتاب
-      parameters:
-      - in: path
-        name: slug
-        schema:
-          type: string
-        required: true
-      tags:
-      - Book
-      security:
-      - {}
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BookViewCount'
-          description: ''
   /api/v1/exam/current/:
     get:
       operationId: exam_current_retrieve
@@ -1242,61 +1174,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PublicExamStatus'
-          description: ''
-  /api/v1/gallery/:
-    get:
-      operationId: gallery_retrieve
-      description: یک درخواست، دو مجموعه — بدون دو رفت‌وبرگشت.
-      summary: گالری کامل (تصاویر رهبر + شهدا)
-      tags:
-      - Gallery
-      security:
-      - {}
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: {}
-          description: ''
-  /api/v1/gallery/leader/:
-    get:
-      operationId: gallery_leader_retrieve
-      description: |-
-        فهرست مرتب‌شدهٔ تصاویر فعال.
-
-        کلید `leader` عمداً یک کلید تازه است (نه آرایهٔ بی‌نام) تا اگر
-        روزی فیلد دیگری اضافه شد، قرارداد نشکند.
-      summary: تصاویر رهبر انقلاب و کلام همراهِ هر تصویر
-      tags:
-      - Gallery
-      security:
-      - {}
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: {}
-          description: ''
-  /api/v1/gallery/martyrs/:
-    get:
-      operationId: gallery_martyrs_retrieve
-      description: فهرست مرتب‌شدهٔ شهدای فعال (خالی ⇒ فرانت بخش را پنهان می‌کند).
-      summary: شهدای نوار بالای فوتر
-      tags:
-      - Gallery
-      security:
-      - {}
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: {}
           description: ''
   /api/v1/health/:
     get:
@@ -2636,6 +2513,8 @@ components:
           type: integer
         question_text:
           type: string
+        chapter:
+          type: string
         selected_position:
           type: integer
           nullable: true
@@ -2646,6 +2525,7 @@ components:
           items:
             $ref: '#/components/schemas/QuestionOptionSafe'
       required:
+      - chapter
       - is_answered
       - options
       - question_number
@@ -2882,8 +2762,6 @@ components:
         code:
           type: string
           title: کد مسجد
-          description: خودکار ساخته می‌شود (مثل MSQ-18). فقط اگر لازم است می‌توانید
-            عوضش کنید.
           maxLength: 32
         name:
           type: string
@@ -2891,7 +2769,7 @@ components:
           maxLength: 160
         neighborhood:
           type: string
-          title: محله / محدوده (اختیاری)
+          title: محله / محدوده
           maxLength: 160
         address:
           type: string
@@ -2914,24 +2792,21 @@ components:
           maximum: 9223372036854775807
           minimum: 0
           format: int64
-          title: هدف‌گذاری تعداد مشارکت (اختیاری)
+          title: هدف‌گذاری تعداد مشارکت
         display_order:
           type: integer
           maximum: 9223372036854775807
           minimum: 0
           format: int64
           title: ترتیب نمایش
-          description: اگر صفر بماند، خودکار بر اساس ترتیب افزودن پر می‌شود.
         registered_count:
           type: integer
           readOnly: true
           title: تعداد ثبت‌نام‌کنندگان
-          description: از روی ثبت‌نام‌ها شمارش می‌شود؛ دستی قابل تغییر نیست.
         completed_exam_count:
           type: integer
           readOnly: true
           title: تعداد تکمیل‌کنندگان آزمون
-          description: از روی کارنامه‌ها شمارش می‌شود؛ دستی قابل تغییر نیست.
         is_active:
           type: boolean
           title: فعال
@@ -2946,6 +2821,7 @@ components:
           readOnly: true
           title: تاریخ به‌روزرسانی
       required:
+      - code
       - completed_exam_count
       - created_at
       - id
@@ -2958,9 +2834,8 @@ components:
       properties:
         code:
           type: string
+          minLength: 1
           title: کد مسجد
-          description: خودکار ساخته می‌شود (مثل MSQ-18). فقط اگر لازم است می‌توانید
-            عوضش کنید.
           maxLength: 32
         name:
           type: string
@@ -2969,7 +2844,7 @@ components:
           maxLength: 160
         neighborhood:
           type: string
-          title: محله / محدوده (اختیاری)
+          title: محله / محدوده
           maxLength: 160
         address:
           type: string
@@ -2992,18 +2867,18 @@ components:
           maximum: 9223372036854775807
           minimum: 0
           format: int64
-          title: هدف‌گذاری تعداد مشارکت (اختیاری)
+          title: هدف‌گذاری تعداد مشارکت
         display_order:
           type: integer
           maximum: 9223372036854775807
           minimum: 0
           format: int64
           title: ترتیب نمایش
-          description: اگر صفر بماند، خودکار بر اساس ترتیب افزودن پر می‌شود.
         is_active:
           type: boolean
           title: فعال
       required:
+      - code
       - name
     AdminParticipantExplorerItem:
       type: object
@@ -3049,19 +2924,10 @@ components:
         text:
           type: string
           title: متن صورت سوال
-        source_story:
+        chapter:
           type: string
-          title: نام داستان (اختیاری)
-          description: مثلاً «داستان ۱۲ — آب را که گل آلود کنی…». فقط ادمین می‌بیند.
+          title: فصل / بخش کتاب
           maxLength: 160
-        source_page:
-          type: integer
-          maximum: 9223372036854775807
-          minimum: 0
-          format: int64
-          nullable: true
-          title: شمارهٔ صفحه (اختیاری)
-          description: شمارهٔ صفحه در نسخهٔ فایل کتاب. فقط ادمین می‌بیند.
         difficulty:
           allOf:
           - $ref: '#/components/schemas/DifficultyEnum'
@@ -3167,19 +3033,10 @@ components:
           type: string
           minLength: 1
           title: متن صورت سوال
-        source_story:
+        chapter:
           type: string
-          title: نام داستان (اختیاری)
-          description: مثلاً «داستان ۱۲ — آب را که گل آلود کنی…». فقط ادمین می‌بیند.
+          title: فصل / بخش کتاب
           maxLength: 160
-        source_page:
-          type: integer
-          maximum: 9223372036854775807
-          minimum: 0
-          format: int64
-          nullable: true
-          title: شمارهٔ صفحه (اختیاری)
-          description: شمارهٔ صفحه در نسخهٔ فایل کتاب. فقط ادمین می‌بیند.
         difficulty:
           allOf:
           - $ref: '#/components/schemas/DifficultyEnum'
@@ -3448,13 +3305,6 @@ components:
         service:
           type: string
           default: kaveh185
-    BookViewCount:
-      type: object
-      properties:
-        view_count:
-          type: integer
-      required:
-      - view_count
     CategoryEnum:
       enum:
       - otp
@@ -3813,9 +3663,8 @@ components:
       properties:
         code:
           type: string
+          minLength: 1
           title: کد مسجد
-          description: خودکار ساخته می‌شود (مثل MSQ-18). فقط اگر لازم است می‌توانید
-            عوضش کنید.
           maxLength: 32
         name:
           type: string
@@ -3824,7 +3673,7 @@ components:
           maxLength: 160
         neighborhood:
           type: string
-          title: محله / محدوده (اختیاری)
+          title: محله / محدوده
           maxLength: 160
         address:
           type: string
@@ -3847,14 +3696,13 @@ components:
           maximum: 9223372036854775807
           minimum: 0
           format: int64
-          title: هدف‌گذاری تعداد مشارکت (اختیاری)
+          title: هدف‌گذاری تعداد مشارکت
         display_order:
           type: integer
           maximum: 9223372036854775807
           minimum: 0
           format: int64
           title: ترتیب نمایش
-          description: اگر صفر بماند، خودکار بر اساس ترتیب افزودن پر می‌شود.
         is_active:
           type: boolean
           title: فعال
@@ -3866,19 +3714,10 @@ components:
           type: string
           minLength: 1
           title: متن صورت سوال
-        source_story:
+        chapter:
           type: string
-          title: نام داستان (اختیاری)
-          description: مثلاً «داستان ۱۲ — آب را که گل آلود کنی…». فقط ادمین می‌بیند.
+          title: فصل / بخش کتاب
           maxLength: 160
-        source_page:
-          type: integer
-          maximum: 9223372036854775807
-          minimum: 0
-          format: int64
-          nullable: true
-          title: شمارهٔ صفحه (اختیاری)
-          description: شمارهٔ صفحه در نسخهٔ فایل کتاب. فقط ادمین می‌بیند.
         difficulty:
           allOf:
           - $ref: '#/components/schemas/DifficultyEnum'
@@ -3935,68 +3774,6 @@ components:
           maxLength: 20
         mosque_id:
           type: integer
-    PublicBook:
-      type: object
-      description: متادیتای کتاب برای شرکت‌کننده — بدون مسیر فایل روی دیسک.
-      properties:
-        title:
-          type: string
-          title: عنوان کتاب
-          maxLength: 200
-        slug:
-          type: string
-          title: شناسهٔ یکتا
-          description: در نشانی عمومی کتاب استفاده می‌شود؛ انگلیسی و کوتاه باشد.
-          maxLength: 80
-          pattern: ^[-a-zA-Z0-9_]+$
-        description:
-          type: string
-          title: توضیح کوتاه
-          description: یک یا دو جمله برای معرفی کتاب در صفحهٔ مطالعه.
-        page_count:
-          type: integer
-          maximum: 9223372036854775807
-          minimum: 0
-          format: int64
-          nullable: true
-          title: تعداد صفحه (اختیاری)
-          description: برای نمایش «۳۰ داستان در ۴۸ صفحه»؛ اختیاری است.
-        story_count:
-          type: integer
-          maximum: 9223372036854775807
-          minimum: 0
-          format: int64
-          nullable: true
-          title: تعداد داستان (اختیاری)
-        view_count:
-          type: integer
-          readOnly: true
-          title: تعداد بازدید
-          description: با هر بار باز شدن صفحهٔ مطالعه یک واحد زیاد می‌شود.
-        file_url:
-          type: string
-          description: نشانی عمومی فایل — از نمای کنترل‌شده، نه مسیر خام media.
-          readOnly: true
-        format_label:
-          type: string
-          description: برچسب فارسی فرمت فایل.
-          readOnly: true
-        size_mb:
-          type: number
-          format: double
-          description: حجم فایل به مگابایت.
-          readOnly: true
-        updated_at:
-          type: string
-          format: date-time
-          readOnly: true
-          title: تاریخ به‌روزرسانی
-      required:
-      - file_url
-      - format_label
-      - size_mb
-      - updated_at
-      - view_count
     PublicExamStatus:
       type: object
       description: ساختار خروجی وضعیت عمومی و بازهٔ زمانی شرکت در آزمون.
