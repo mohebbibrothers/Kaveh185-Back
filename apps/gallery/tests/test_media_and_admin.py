@@ -29,15 +29,6 @@ def _clear_cache() -> None:
     cache.clear()
 
 
-@pytest.fixture(autouse=True)
-def _isolated_media(settings, tmp_path: Path) -> Path:
-    """رسانهٔ هر تست در پوشهٔ موقت خودش — مخزن و `media/` واقعی آلوده نمی‌شوند."""
-    root = tmp_path / "media"
-    root.mkdir(parents=True, exist_ok=True)
-    settings.MEDIA_ROOT = str(root)
-    return root
-
-
 # ── سرو رسانه ──────────────────────────────────────────────────────────────
 @pytest.mark.django_db
 def test_media_serves_an_uploaded_image_even_when_debug_is_off(settings) -> None:

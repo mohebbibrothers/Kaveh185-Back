@@ -96,7 +96,9 @@ def test_alt_falls_back_to_the_caption_when_the_admin_leaves_it_empty(
     """متن جانشین خالی ⇒ از کلام ساخته می‌شود، نه رشتهٔ خالی."""
     LeaderPortrait.objects.create(image=_image_file(), caption="کلام نمونه")
 
-    item = client.get("/api/v1/gallery/leader/").json()["data"]["items"][0]
+    response = client.get("/api/v1/gallery/leader/")
+    item = response.json()["data"]["items"][0]
+    response.close()
     assert item["alt"] == "کلام نمونه"
 
 
@@ -155,7 +157,9 @@ def test_bootstrap_carries_the_gallery_with_absolute_urls(client: APIClient) -> 
     LeaderPortrait.objects.create(image=_image_file(), caption="کلام")
     Martyr.objects.create(image=_image_file("m.jpg"), title="عنوان")
 
-    body = client.get("/api/v1/core/bootstrap/").json()["data"]
+    response = client.get("/api/v1/core/bootstrap/")
+    body = response.json()["data"]
+    response.close()  # دستهٔ فایل تصویرها آزاد شود
 
     assert "gallery" in body
     assert len(body["gallery"]["leader"]) == 1

@@ -28,6 +28,19 @@ def _clear_cache_between_tests() -> Any:
     cache.clear()
 
 
+@pytest.fixture(autouse=True)
+def _isolated_media(settings: Any, tmp_path: Any) -> Any:
+    """رسانهٔ هر تست در پوشهٔ موقت خودش.
+
+    چرا autouse؟ چون آپلودهای تست (گالری، شهدا) نباید در `media/` واقعیِ
+    مخزن بنشینند — وگرنه یک روز ده‌ها فایل ۰کیلوبایتی وارد گیت می‌شوند.
+    """
+    root = tmp_path / "media"
+    root.mkdir(parents=True, exist_ok=True)
+    settings.MEDIA_ROOT = str(root)
+    return root
+
+
 @pytest.fixture()
 def api_client() -> APIClient:
     """کلاینت خام HTTP برای فراخوانی اندپوینت‌های DRF."""
