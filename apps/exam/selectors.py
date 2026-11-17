@@ -96,6 +96,13 @@ def get_public_landing_bootstrap() -> dict[str, Any]:
     exam_status = get_public_exam_status()
     mosques = get_active_mosques_dropdown()
     leaderboard = get_mosque_leaderboard_snapshot()
+    # گالری: تصاویر رهبر (باکس کتاب و کلام) + نوار شهدا (بالای فوتر).
+    # با همان درخواست می‌آید تا صفحهٔ اول یک رفت‌وبرگشت شبکه‌ای بیشتر نداشته
+    # باشد؛ هر دو در کش SWR خودشان نشسته‌اند، پس هزینه‌اش تقریباً صفر است.
+    gallery = {
+        "leader": get_leader_gallery(),
+        "martyrs": get_martyrs(),
+    }
     return {
         "server_time": now.isoformat(),
         "server_time_jalali": format_jalali_datetime(now),
