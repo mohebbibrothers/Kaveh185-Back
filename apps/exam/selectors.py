@@ -84,7 +84,7 @@ def get_public_exam_status() -> dict[str, Any]:
     )
 
 
-def get_public_landing_bootstrap() -> dict[str, Any]:
+def get_public_landing_bootstrap(request: Any = None) -> dict[str, Any]:
     """بستهٔ یکپارچهٔ صفحهٔ اول (وضعیت آزمون + لیست کشویی ۱۷ مسجد + رنکینگ زندهٔ مساجد)."""
     from apps.gallery.selectors import get_leader_gallery, get_martyrs
     from apps.mosques.selectors import (
@@ -100,8 +100,8 @@ def get_public_landing_bootstrap() -> dict[str, Any]:
     # با همان درخواست می‌آید تا صفحهٔ اول یک رفت‌وبرگشت شبکه‌ای بیشتر نداشته
     # باشد؛ هر دو در کش SWR خودشان نشسته‌اند، پس هزینه‌اش تقریباً صفر است.
     gallery = {
-        "leader": get_leader_gallery(),
-        "martyrs": get_martyrs(),
+        "leader": get_leader_gallery(request),
+        "martyrs": get_martyrs(request),
     }
     return {
         "server_time": now.isoformat(),
