@@ -45,6 +45,15 @@ CACHE_POLICY_REGISTRY: dict[str, DomainCachePolicy] = {
         frontend_tags=("exam-status", "exam-config"),
         frontend_paths=("/", "/exam"),
     ),
+    "gallery": DomainCachePolicy(
+        domain="gallery",
+        namespace="kaveh185:gallery",
+        soft_ttl=60,
+        hard_ttl=600,
+        lock_ttl=5,
+        frontend_tags=("gallery", "leader-gallery", "martyrs"),
+        frontend_paths=("/",),
+    ),
     "reporting": DomainCachePolicy(
         domain="reporting",
         namespace="kaveh185:reporting",

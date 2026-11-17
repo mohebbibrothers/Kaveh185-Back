@@ -11,6 +11,7 @@ from apps.core.docs_gate import (
     GatedSpectacularRedocView,
     GatedSpectacularSwaggerView,
 )
+from apps.core.media import serve_media
 from apps.core.metrics_views import PrometheusMetricsView
 from apps.core.responses import not_found_response
 from apps.core.views import APIRootDiscoveryView
@@ -40,6 +41,7 @@ urlpatterns = [
     path("api/v1/reporting/", include("apps.reporting.urls")),
     path("api/v1/notifications/", include("apps.notifications.urls")),
     path("api/v1/audit-logs/", include("apps.audit_logs.urls")),
+    path("api/v1/gallery/", include("apps.gallery.urls")),
     path("api/v1/admin/command-center/", include("apps.command_center.urls")),
     path(
         "api/v1/command-center/",
@@ -70,3 +72,15 @@ def _handler404(request: object, exception: object = None) -> object:
 from django.views.defaults import page_not_found as default_page_not_found  # noqa: E402
 
 handler404 = _handler404
+
+
+# ── سرو رسانه در تولید ────────────────────────────────────────────────────
+# `static()` جنگو فقط با `DEBUG=True` کار می‌کند. روی هاست اشتراکی، تصاویری
+# که ادمین آپلود می‌کند باید بدون روشن کردن DEBUG هم دیده شوند. مسیر بر
+# اساس خودِ `MEDIA_URL` ساخته می‌شود تا اگر روزی `/media/` عوض شد،
+# این‌جا هم خودکار عوض شود.
+_media_prefix = str(settings.MEDIA_URL).strip("/")
+if _media_prefix:
+    urlpatterns += [
+        path(f"{_media_prefix}/<path:path>", serve_media, name="media-files"),
+    ]

@@ -86,6 +86,7 @@ def get_public_exam_status() -> dict[str, Any]:
 
 def get_public_landing_bootstrap() -> dict[str, Any]:
     """بستهٔ یکپارچهٔ صفحهٔ اول (وضعیت آزمون + لیست کشویی ۱۷ مسجد + رنکینگ زندهٔ مساجد)."""
+    from apps.gallery.selectors import get_leader_gallery, get_martyrs
     from apps.mosques.selectors import (
         get_active_mosques_dropdown,
         get_mosque_leaderboard_snapshot,
@@ -101,6 +102,12 @@ def get_public_landing_bootstrap() -> dict[str, Any]:
         "exam_status": exam_status,
         "mosques": mosques,
         "leaderboard": leaderboard,
+        # گالری در همان بستهٔ صفحهٔ اول می‌آید: یک درخواست، نه سه. خالی
+        # بودنش خطا نیست؛ فرانت با آرایهٔ خالی بخش را پنهان می‌کند.
+        "gallery": {
+            "leader": get_leader_gallery(),
+            "martyrs": get_martyrs(),
+        },
     }
 
 
