@@ -111,10 +111,7 @@ def get_public_landing_bootstrap() -> dict[str, Any]:
         "leaderboard": leaderboard,
         # گالری در همان بستهٔ صفحهٔ اول می‌آید: یک درخواست، نه سه. خالی
         # بودنش خطا نیست؛ فرانت با آرایهٔ خالی بخش را پنهان می‌کند.
-        "gallery": {
-            "leader": get_leader_gallery(),
-            "martyrs": get_martyrs(),
-        },
+        "gallery": gallery,
     }
 
 

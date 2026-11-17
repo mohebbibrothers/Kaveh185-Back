@@ -42,7 +42,6 @@ urlpatterns = [
     path("api/v1/gallery/", include("apps.gallery.urls")),
     path("api/v1/notifications/", include("apps.notifications.urls")),
     path("api/v1/audit-logs/", include("apps.audit_logs.urls")),
-    path("api/v1/gallery/", include("apps.gallery.urls")),
     path("api/v1/admin/command-center/", include("apps.command_center.urls")),
     path(
         "api/v1/command-center/",
