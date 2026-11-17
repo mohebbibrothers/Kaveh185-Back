@@ -45,6 +45,18 @@ CACHE_POLICY_REGISTRY: dict[str, DomainCachePolicy] = {
         frontend_tags=("exam-status", "exam-config"),
         frontend_paths=("/", "/exam"),
     ),
+    # گالری: تصاویر رهبر و نوار شهدا. عملاً ایستاست، پس TTL بلندتر؛
+    # ولی ابطالِ صریح (هنگام ذخیره در ادمین) دارد، پس «دیر دیده شدن»
+    # هیچ‌وقت اتفاق نمی‌افتد.
+    "gallery": DomainCachePolicy(
+        domain="gallery",
+        namespace="kaveh185:gallery",
+        soft_ttl=120,
+        hard_ttl=900,
+        lock_ttl=5,
+        frontend_tags=("gallery", "leader-portraits", "martyrs"),
+        frontend_paths=("/",),
+    ),
     "reporting": DomainCachePolicy(
         domain="reporting",
         namespace="kaveh185:reporting",

@@ -123,6 +123,7 @@ Kaveh185-Back/apps/
 │   ├── frontend.py
 │   ├── idempotency.py
 │   ├── jalali.py
+│   ├── media.py
 │   ├── metrics.py
 │   ├── metrics_views.py
 │   ├── middleware.py
@@ -156,6 +157,15 @@ Kaveh185-Back/apps/
 │   ├── validators.py  # اعتبارسنج‌های قابل استفادهٔ مجدد (کدملی، موبایل، تاریخ جلالی)
 │   ├── views.py  # لایهٔ مرز HTTP و ارکستریشن
 │   └── views_book.py
+├── gallery/
+│   ├── migrations/
+│   ├── tests/
+│   ├── admin.py
+│   ├── apps.py
+│   ├── models.py  # مدل‌های داده و قیود یکپارچگی دیتابیس
+│   ├── selectors.py  # خواندن داده و کوئری‌های بهینه‌شده (بدون side effect)
+│   ├── urls.py  # قرارداد مسیرهای API
+│   └── views.py  # لایهٔ مرز HTTP و ارکستریشن
 ├── mosques/
 │   ├── management/
 │   ├── migrations/
@@ -232,6 +242,7 @@ apps/core/
 ├── frontend.py
 ├── idempotency.py
 ├── jalali.py
+├── media.py
 ├── metrics.py
 ├── metrics_views.py
 ├── middleware.py

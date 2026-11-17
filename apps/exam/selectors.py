@@ -86,6 +86,7 @@ def get_public_exam_status() -> dict[str, Any]:
 
 def get_public_landing_bootstrap() -> dict[str, Any]:
     """بستهٔ یکپارچهٔ صفحهٔ اول (وضعیت آزمون + لیست کشویی ۱۷ مسجد + رنکینگ زندهٔ مساجد)."""
+    from apps.gallery.selectors import get_leader_gallery, get_martyrs
     from apps.mosques.selectors import (
         get_active_mosques_dropdown,
         get_mosque_leaderboard_snapshot,
@@ -95,12 +96,20 @@ def get_public_landing_bootstrap() -> dict[str, Any]:
     exam_status = get_public_exam_status()
     mosques = get_active_mosques_dropdown()
     leaderboard = get_mosque_leaderboard_snapshot()
+    # گالری: تصاویر رهبر (باکس کتاب و کلام) + نوار شهدا (بالای فوتر).
+    # با همان درخواست می‌آید تا صفحهٔ اول یک رفت‌وبرگشت شبکه‌ای بیشتر نداشته
+    # باشد؛ هر دو در کش SWR خودشان نشسته‌اند، پس هزینه‌اش تقریباً صفر است.
+    gallery = {
+        "leader": get_leader_gallery(),
+        "martyrs": get_martyrs(),
+    }
     return {
         "server_time": now.isoformat(),
         "server_time_jalali": format_jalali_datetime(now),
         "exam_status": exam_status,
         "mosques": mosques,
         "leaderboard": leaderboard,
+        "gallery": gallery,
     }
 
 
