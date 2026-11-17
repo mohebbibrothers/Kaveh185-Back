@@ -116,6 +116,24 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt -r requirements-dev.txt
 
+      # کاربرِ سرویسِ MariaDB در این جاب فقط به `kaveh185_ci` دسترسی دارد، ولی
+      # pytest-django برای ساختِ `test_kaveh185_ci` به امتیازِ CREATE نیاز دارد:
+      #     (1044, "Access denied for user 'kaveh'@'%' to database 'test_kaveh185_ci'")
+      # پس یک بار با root همان دسترسی داده می‌شود. این فقط داخلِ کانتینرِ
+      # موقتِ همین جاب است و به هیچ محیطی درز نمی‌کند.
+      - name: Grant the CI user rights to create the test database
+        run: |
+          python - <<'PY'
+          import pymysql
+
+          conn = pymysql.connect(host="127.0.0.1", user="root", password="root", autocommit=True)
+          with conn.cursor() as cur:
+              cur.execute("GRANT ALL PRIVILEGES ON *.* TO 'kaveh'@'%' WITH GRANT OPTION")
+              cur.execute("FLUSH PRIVILEGES")
+          conn.close()
+          print("privileges granted to kaveh")
+          PY
+
       # ── چرا این جاب وجود دارد؟ ───────────────────────────────────────────
       # موتور هاست MariaDB است، ولی تست‌ها روی SQLite اجرا می‌شدند. تفاوتِ
       # رفتاریِ واقعی همین‌جا لو رفت: در MariaDB هر `DROP TABLE` تراکنش را
