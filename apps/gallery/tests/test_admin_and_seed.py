@@ -169,13 +169,96 @@ def test_saving_in_the_admin_invalidates_the_public_cache(_isolated_media: Path)
     assert get_leader_gallery()[0]["caption"] == "بعد"
 
 
-# ── دستور seed ─────────────────────────────────────────────────────────────
 @pytest.mark.django_db
-def test_seed_creates_items_once_and_is_idempotent(_isolated_media: Path, tmp_path: Path) -> None:
+def test_admin_thumbnails_render_for_existing_and_empty_images(_isolated_media: Path) -> None:
+    """پیش‌نمایش تصویر در فهرست و در فرم، در هر دو حالت کار می‌کند."""
+    portrait = LeaderPortrait.objects.create(image=_jpeg("t.jpg"), caption="کلام")
+    martyr = Martyr.objects.create(image=_jpeg("tm.jpg"), title="عنوان")
+
+    from apps.gallery.admin import LeaderPortraitAdmin, MartyrAdmin
+
+    leader_admin = LeaderPortraitAdmin(
+        LeaderPortrait, __import__("django.contrib.admin").contrib.admin.site
+    )
+    martyr_admin = MartyrAdmin(Martyr, __import__("django.contrib.admin").contrib.admin.site)
+
+    assert "img" in str(leader_admin.thumb(portrait))
+    assert "img" in str(leader_admin.thumb_large(portrait))
+    assert "img" in str(martyr_admin.thumb(martyr))
+    assert "img" in str(martyr_admin.thumb_large(martyr))
+
+    # رکورد بدون تصویر نباید خطا بدهد.
+    empty = LeaderPortrait()
+    assert str(leader_admin.thumb(empty)) == "—"
+    assert "پس از ذخیره" in str(leader_admin.thumb_large(empty))
+    empty_martyr = Martyr()
+    assert str(martyr_admin.thumb(empty_martyr)) == "—"
+    assert "پس از ذخیره" in str(martyr_admin.thumb_large(empty_martyr))
+
+
+@pytest.mark.django_db
+def test_admin_delete_paths_invalidate_the_cache(_isolated_media: Path) -> None:
+    """حذف تک‌رکورد و حذف گروهی، کش عمومی را باطل می‌کنند."""
+    from django.contrib.admin.sites import site as admin_site
+    from django.contrib.messages.storage.fallback import FallbackStorage
+    from django.test import RequestFactory
+
+    from apps.gallery.selectors import get_leader_gallery
+
+    LeaderPortrait.objects.create(image=_jpeg("d1.jpg"), caption="یک")
+    LeaderPortrait.objects.create(image=_jpeg("d2.jpg"), caption="دو")
+    assert len(get_leader_gallery()) == 2
+
+    request = RequestFactory().get("/")
+    request.session = {}  # type: ignore[attr-defined]
+    request._messages = FallbackStorage(request)  # type: ignore[attr-defined]
+
+    model_admin = admin_site._registry[LeaderPortrait]
+    model_admin.delete_model(request, LeaderPortrait.objects.first())
+    # کش باطل شد ⇒ یک رکورد مانده.
+    assert len(get_leader_gallery()) == 1
+
+    model_admin.delete_queryset(request, LeaderPortrait.all_objects.all())
+    assert get_leader_gallery() == []
+
+
+# ── دستور seed ─────────────────────────────────────────────────────────────
+@pytest.fixture()
+def frontend_bundle(settings: Any, tmp_path: Path) -> Path:
+    """یک «بستهٔ فرانت» ساختگی با تصاویر واقعی.
+
+    ⚠️ چرا نمی‌توان به `frontend/img` مخزن تکیه کرد؟ چون آن پوشه یک
+    سیم‌لینک به خروجیِ بیلد فرانت است و در CI وجود ندارد؛ تستی که به آن
+    وابسته باشد، محلی سبز و روی CI قرمز می‌شود. این‌جا خودمان تصویر
+    می‌سازیم، پس تست در هر محیطی یکسان است.
+    """
+    img = tmp_path / "dist" / "img"
+    img.mkdir(parents=True, exist_ok=True)
+    for name in (
+        "emam-reading.jpg",
+        "emam-reading-sm.jpg",
+        "kaveh-hero.jpg",
+        "icon-face.png",
+        "emblem-portrait-sm.jpg",
+    ):
+        buf = io.BytesIO()
+        Image.new("RGB", (24, 24), (40, 80, 120)).save(
+            buf, format="PNG" if name.endswith(".png") else "JPEG"
+        )
+        (img / name).write_bytes(buf.getvalue())
+    settings.FRONTEND_DIST = str(tmp_path / "dist")
+    return img
+
+
+@pytest.mark.django_db
+def test_seed_creates_items_once_and_is_idempotent(
+    _isolated_media: Path, frontend_bundle: Path
+) -> None:
     """اجرای دوبارهٔ دستور، رکورد تکراری نمی‌سازد."""
     call_command("seed_gallery", verbosity=0)
     first_leader = LeaderPortrait.all_objects.count()
     first_martyr = Martyr.all_objects.count()
+    assert first_leader > 0 and first_martyr > 0
 
     call_command("seed_gallery", verbosity=0)
 
@@ -184,18 +267,34 @@ def test_seed_creates_items_once_and_is_idempotent(_isolated_media: Path, tmp_pa
 
 
 @pytest.mark.django_db
-def test_seed_force_updates_in_place(_isolated_media: Path) -> None:
+def test_seed_copies_images_into_media_and_sets_positions(
+    _isolated_media: Path, frontend_bundle: Path
+) -> None:
+    """تصویرها واقعاً در `MEDIA_ROOT` کپی می‌شوند و ترتیب ۱، ۲، ۳ است."""
+    call_command("seed_gallery", verbosity=0)
+
+    portrait = LeaderPortrait.all_objects.order_by("display_order").first()
+    assert portrait is not None
+    assert portrait.image.name.startswith("gallery/leader/")
+    assert (_isolated_media / portrait.image.name).is_file()
+
+    positions = list(
+        Martyr.all_objects.order_by("display_order").values_list("display_order", flat=True)
+    )
+    assert positions == list(range(1, len(positions) + 1))
+
+
+@pytest.mark.django_db
+def test_seed_force_updates_in_place(_isolated_media: Path, frontend_bundle: Path) -> None:
     """با `--force` رکوردهای ساختهٔ همین دستور به‌روز می‌شوند، نه تکرار."""
     call_command("seed_gallery", verbosity=0)
     before = LeaderPortrait.all_objects.count()
-
     call_command("seed_gallery", "--force", verbosity=0)
-
     assert LeaderPortrait.all_objects.count() == before
 
 
 @pytest.mark.django_db
-def test_seed_dry_run_writes_nothing() -> None:
+def test_seed_dry_run_writes_nothing(frontend_bundle: Path) -> None:
     """`--dry-run` فقط گزارش می‌دهد."""
     call_command("seed_gallery", "--dry-run", verbosity=0)
     assert LeaderPortrait.all_objects.count() == 0
@@ -209,3 +308,21 @@ def test_seed_survives_a_missing_image_folder(settings: Any, _isolated_media: Pa
     settings.BASE_DIR = Path("/nonexistent-base-for-test")
     call_command("seed_gallery", verbosity=0)
     assert LeaderPortrait.all_objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_seed_skips_an_item_whose_file_is_missing(
+    settings: Any, tmp_path: Path, _isolated_media: Path
+) -> None:
+    """اگر یکی از تصاویر نباشد، فقط همان قلم رد می‌شود و بقیه می‌آیند."""
+    img = tmp_path / "partial" / "img"
+    img.mkdir(parents=True)
+    buf = io.BytesIO()
+    Image.new("RGB", (24, 24), (0, 0, 0)).save(buf, format="JPEG")
+    (img / "emam-reading.jpg").write_bytes(buf.getvalue())  # فقط یکی از پنچ
+    settings.FRONTEND_DIST = str(tmp_path / "partial")
+
+    call_command("seed_gallery", verbosity=0)
+
+    assert LeaderPortrait.all_objects.count() == 1
+    assert Martyr.all_objects.count() == 0
