@@ -77,6 +77,12 @@ def _make_front(tmp_path: Path, *, with_assets: bool = True) -> Path:
         img = root / "img"
         img.mkdir()
         (img / "emblem-mark.webp").write_bytes(b"RIFF0000WEBPfake")
+        # ── ماسک‌های آیکونِ بله (دورِ ۱۸) ──────────────────────────────
+        # آیکونِ سه‌بعدیِ کانال از این دو ماسکِ آلفا ساخته می‌شود؛ اگر یکی
+        # ۴۰۴ بدهد، آیکونِ کانال در فوتر «خالی» دیده می‌شود.
+        (img / "bale-mark.png").write_bytes(b"\x89PNGfake-mark")
+        (img / "bale-check.png").write_bytes(b"\x89PNGfake-check")
+        (img / "fist-watermark.webp").write_bytes(b"RIFF0000WEBPfake")
         (img / "kaveh-photo.jpg").write_bytes(b"\xff\xd8\xff\xe0fake-jpeg")
 
     return root
@@ -137,6 +143,24 @@ def test_trailing_slash_redirect_keeps_query(front_root: Path) -> None:
         resp = _client().get("/register?ref=mosque")
     assert resp.status_code == 308
     assert resp["Location"] == "/register/?ref=mosque"
+
+
+def test_channel_icon_masks_are_served(front_root: Path) -> None:
+    """دو ماسکِ آیکونِ کانال (بدنه/تیک) و واترمارکِ فوتر باید سرو شوند.
+
+    ⚠️ دورِ ۱۸: آیکونِ کانال از تصویرِ کاربر به دو ماسک تبدیل شد. اگر یکی
+    از این فایل‌ها در بستهٔ تحویلی نباشد، آیکونِ سه‌بعدیِ فوتر ناقص/خالی
+    دیده می‌شود — همان دستهٔ باگی که در دورِ ۱۶ برای آیکون‌ها رخ داد.
+    """
+    with override_settings(FRONTEND_DIST=str(front_root)):
+        client = _client()
+        for name in ("bale-mark.png", "bale-check.png"):
+            resp = client.get(f"/img/{name}")
+            assert resp.status_code == 200, name
+            assert resp["Content-Type"].startswith("image/png")
+        wm = client.get("/img/fist-watermark.webp")
+    assert wm.status_code == 200
+    assert wm["Content-Type"].startswith("image/webp")
 
 
 def test_asset_without_slash_is_not_redirected(front_root: Path) -> None:
