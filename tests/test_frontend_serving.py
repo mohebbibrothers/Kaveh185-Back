@@ -60,6 +60,20 @@ def _make_front(tmp_path: Path, *, with_assets: bool = True) -> Path:
         (chunks / "a.js").write_text("console.log(1)", "utf-8")
         (chunks / "a.css").write_text("body{}", "utf-8")
 
+        # ── آیکون‌های ریشه (نکتهٔ ۶، دورِ ۱۶) ──────────────────────────
+        # `<head>` این هفت فایل را اعلام می‌کند؛ اگر هرکدام سرو نشود،
+        # مرورگر آیکونِ کهنه یا پیش‌فرض نشان می‌دهد.
+        for name in (
+            "favicon.ico",
+            "favicon-32.png",
+            "icon-64.png",
+            "icon-192.png",
+            "icon-512.png",
+            "icon-maskable-512.png",
+            "apple-icon.png",
+        ):
+            (root / name).write_bytes(b"\x89PNGfake-icon")
+
         img = root / "img"
         img.mkdir()
         (img / "emblem-mark.webp").write_bytes(b"RIFF0000WEBPfake")
@@ -187,6 +201,31 @@ def test_missing_asset_returns_empty_not_html(front_root: Path) -> None:
     assert resp.status_code == 404
     assert resp.content == b""
     assert "text/html" not in resp["Content-Type"]
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "favicon.ico",
+        "favicon-32.png",
+        "icon-64.png",
+        "icon-192.png",
+        "icon-512.png",
+        "icon-maskable-512.png",
+        "apple-icon.png",
+    ],
+)
+def test_every_announced_icon_is_served_from_root(front_root: Path, name: str) -> None:
+    """هر آیکونی که `<head>` اعلام می‌کند، از ریشه واقعاً سرو می‌شود.
+
+    ⚠️ باگِ واقعی: `_ROOT_FILES` فقط چهار نام را می‌شناخت؛ `favicon.ico` در
+    فهرست بود ولی `favicon-32.png` و `apple-icon.png` نبودند و ۴۰۴
+    می‌گرفتند — یعنی سافاری و کرومِ موبایل آیکونِ تب را از دست می‌دادند.
+    """
+    with override_settings(FRONTEND_DIST=str(front_root)):
+        resp = _client().get(f"/{name}")
+    assert resp.status_code == 200, name
+    assert resp["Content-Type"] != "text/html"
 
 
 def test_api_paths_are_never_swallowed(front_root: Path) -> None:
