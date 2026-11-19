@@ -178,6 +178,7 @@ Kaveh185-Back/apps/
 │   ├── admin.py
 │   ├── apps.py
 │   ├── choices.py  # مقادیر ثابت و ماشین‌های حالت دامنه
+│   ├── collation.py
 │   ├── filters.py  # فیلترهای پیشرفته و چندبعدی queryset
 │   ├── models.py  # مدل‌های داده و قیود یکپارچگی دیتابیس
 │   ├── selectors.py  # خواندن داده و کوئری‌های بهینه‌شده (بدون side effect)

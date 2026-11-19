@@ -10,6 +10,7 @@ from apps.core.cache import cache_get_or_set_swr
 from apps.core.exceptions import NotFoundDomainError
 
 from .choices import MosqueTier
+from .collation import competition_ranks, mosque_core_name, mosque_initial, rank_sort_key
 from .models import Mosque
 
 
@@ -110,44 +111,52 @@ def get_mosque_leaderboard_snapshot() -> dict[str, Any]:
                     "average_correct_answers": avg_correct_val,
                     "average_duration_seconds": avg_duration_val,
                     "display_order": m.display_order,
+                    # حرفِ نشان و «نامِ هسته» را **سرور** می‌سازد تا نمایش و
+                    # رتبه‌بندی در همهٔ کلاینت‌ها یکی باشد (منبعِ واحدِ حقیقت).
+                    "initial": mosque_initial(m.name),
+                    "name_core": mosque_core_name(m.name),
                 }
             )
 
-        # مرتب‌سازی اصلی دقیقاً بر اساس تعداد مشارکت در آزمون (completed_participants_count نزولی)
-        enriched.sort(
-            key=lambda item: (
-                -item["completed_participants_count"],
-                -item["registered_users_count"],
-                -item["average_score"],
-                item["display_order"],
-                item["mosque_id"],
-            )
-        )
+        # ── ترتیبِ رسمیِ رقابت (هم‌قاعده با فرانت‌اند) ──────────────────
+        #   ۱) تعداد شرکت‌کنندهٔ کامل — نزولی
+        #   ۲) ترتیب الفبای نامِ مسجد — صعودی (الفبای صریحِ فارسی)
+        #   ۳) شناسه — فقط برای قطعیتِ کامل
+        # پیش‌تر کلیدِ دوم `display_order` بود؛ یعنی «تنظیمِ دلخواهِ ادمین»
+        # به‌جای الفبا تعیین‌کنندهٔ رتبهٔ تساوی می‌شد. حالا کارِ ادمین
+        # (ترتیبِ نمایش در فهرستِ ثبت‌نام) از کارِ رقابت جدا شده است.
+        enriched.sort(key=rank_sort_key)
 
         total_completed = sum(x["completed_participants_count"] for x in enriched)
         total_registered = sum(x["registered_users_count"] for x in enriched)
 
+        ranks = competition_ranks(enriched)
         leaderboard: list[dict[str, Any]] = []
         for idx, item in enumerate(enriched, start=1):
+            rank = ranks[idx - 1]
             completed_cnt = item["completed_participants_count"]
             target = max(1, int(item["target_participants"] or 500))
             share_pct = (
                 round((completed_cnt / total_completed) * 100.0, 2) if total_completed > 0 else 0.0
             )
             target_pct = round(min(100.0, (completed_cnt / target) * 100.0), 2)
-            if idx == 1 and completed_cnt > 0:
+            # سطحِ رقابتی از **رتبه** می‌آید نه از شمارهٔ حلقه؛ با رتبهٔ
+            # مشترک، دو مسجدِ هم‌امتیاز سطحِ یکسان می‌گیرند (منصفانه).
+            if rank == 1:
                 tier = MosqueTier.GOLD
-            elif idx in {2, 3} and completed_cnt > 0:
+            elif rank in {2, 3}:
                 tier = MosqueTier.SILVER
-            elif idx <= 6 and completed_cnt > 0:
+            elif 0 < rank <= 6:
                 tier = MosqueTier.BRONZE
             else:
                 tier = MosqueTier.RISING
 
             leaderboard.append(
                 {
-                    "rank": idx,
+                    "rank": rank,
                     "id": item["mosque_id"],
+                    "initial": item["initial"],
+                    "name_core": item["name_core"],
                     "mosque_id": item["mosque_id"],
                     "tier": tier,
                     "tier_label": MosqueTier(tier).label,

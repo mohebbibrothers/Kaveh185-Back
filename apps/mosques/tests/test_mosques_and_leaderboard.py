@@ -95,3 +95,65 @@ def test_admin_mosque_crud_and_seed_endpoint(admin_client: APIClient) -> None:
     del_resp = admin_client.delete(f"/api/v1/mosques/admin/{mosque_id}/")
     assert del_resp.status_code == 200
     assert Mosque.all_objects.get(pk=mosque_id).is_active is False
+
+
+@pytest.mark.django_db()
+def test_leaderboard_ties_break_by_persian_alphabet_not_display_order(
+    api_client: APIClient,
+) -> None:
+    """تساویِ امتیاز باید با الفبای **نامِ مسجد** شکسته شود، نه `display_order`."""
+    call_command("seed_mosques", stdout=StringIO())
+
+    # دو مسجد با نمایشِ دلخواهِ برعکسِ الفبا، هر دو با ۳ شرکت‌کننده
+    zarrah = Mosque.objects.get(code="MSQ-01")  # نام: مسجد جامع صاحب‌الزمان
+    amir = Mosque.objects.get(code="MSQ-02")  # نام: مسجد حضرت امیرالمؤمنین
+    Mosque.objects.filter(pk=zarrah.pk).update(display_order=99)
+    Mosque.objects.filter(pk=amir.pk).update(display_order=1)
+    for _ in range(3):
+        increment_mosque_completed_exam_count(zarrah.id)
+        increment_mosque_completed_exam_count(amir.id)
+
+    data = api_client.get("/api/v1/mosques/leaderboard/").json()["data"]
+    board = data["leaderboard"]
+
+    # «امیرالمؤمنین» الفبایی پیش از «صاحب‌الزمان» است ⇒ رتبهٔ ۱
+    assert board[0]["code"] == "MSQ-02"
+    assert board[0]["rank"] == 1
+    assert board[1]["code"] == "MSQ-01"
+    # هم‌امتیاز ⇒ رتبهٔ مشترک (۱۲۲۴)، نه ۱ و ۲
+    assert board[1]["rank"] == 1
+    # سطحِ رقابتی هم یکسان است
+    assert board[0]["tier"] == board[1]["tier"] == "gold"
+
+
+@pytest.mark.django_db()
+def test_leaderboard_zero_participation_rows_get_no_rank_and_alpha_order(
+    api_client: APIClient,
+) -> None:
+    """مساجدِ بی‌مشارکت رتبهٔ ۰ می‌گیرند و بین خودشان الفبایی مرتب‌اند."""
+    call_command("seed_mosques", stdout=StringIO())
+    increment_mosque_completed_exam_count(Mosque.objects.get(code="MSQ-09").id)
+
+    data = api_client.get("/api/v1/mosques/leaderboard/").json()["data"]
+    board = data["leaderboard"]
+    assert board[0]["code"] == "MSQ-09" and board[0]["rank"] == 1
+    zeros = [row for row in board if row["completed_participants_count"] == 0]
+    assert zeros and all(row["rank"] == 0 for row in zeros)
+    cores = [row["name_core"] for row in zeros]
+    assert cores == sorted(cores, key=lambda n: [_ALPHA.index(c) for c in n if c in _ALPHA])
+
+
+@pytest.mark.django_db()
+def test_leaderboard_exposes_display_initial_from_core_name(api_client: APIClient) -> None:
+    """حرفِ نشان از نامِ مسجد می‌آید، نه از کلمهٔ «مسجد»."""
+    call_command("seed_mosques", stdout=StringIO())
+    data = api_client.get("/api/v1/mosques/leaderboard/").json()["data"]
+    by_code = {row["code"]: row for row in data["leaderboard"]}
+    assert by_code["MSQ-01"]["initial"] == "ص"
+    assert by_code["MSQ-02"]["initial"] == "ا"
+    assert by_code["MSQ-05"]["initial"] == "س"
+    assert by_code["MSQ-09"]["initial"] == "م"  # مسجد امام موسی کاظم → «م» درست است
+    assert all(row["initial"] != "" for row in data["leaderboard"])
+
+
+_ALPHA = "آاأإءبپتثجچحخدذرزژسشصضطظعغفقکگلمنوهیئؤ"

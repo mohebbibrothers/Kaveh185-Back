@@ -27,6 +27,8 @@ class MosqueLeaderboardItemSerializer(serializers.Serializer):
     mosque_id = serializers.IntegerField()
     code = serializers.CharField()
     name = serializers.CharField()
+    initial = serializers.CharField(required=False, default="")
+    name_core = serializers.CharField(required=False, default="")
     neighborhood = serializers.CharField()
     imam_name = serializers.CharField()
     commander_name = serializers.CharField()
