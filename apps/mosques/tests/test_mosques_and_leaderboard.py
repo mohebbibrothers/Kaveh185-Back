@@ -120,7 +120,7 @@ def test_leaderboard_ties_break_by_persian_alphabet_not_display_order(
     assert board[0]["code"] == "MSQ-02"
     assert board[0]["rank"] == 1
     assert board[1]["code"] == "MSQ-01"
-    # هم‌امتیاز ⇒ رتبهٔ مشترک (۱۲۲۴)، نه ۱ و ۲
+    # هم‌امتیاز ⇒ جایگاهِ مشترکِ ۱، نه ۱ و ۲
     assert board[1]["rank"] == 1
     # سطحِ رقابتی هم یکسان است
     assert board[0]["tier"] == board[1]["tier"] == "gold"
@@ -169,10 +169,11 @@ def test_simulate_leaderboard_command_builds_scenarios(api_client: APIClient) ->
     assert data["total_completed_participants"] == 62
     assert data["leaderboard"][0]["completed_participants_count"] == 14
     assert data["leaderboard"][0]["rank"] == 1
-    # دو مسجدِ بعدی هم‌امتیاز (۱۱) ⇒ رتبهٔ مشترک ۲ و نفرِ پنجم رتبهٔ ۴
+    # دو مسجدِ بعدی هم‌امتیاز (۱۱) ⇒ هر دو جایگاهِ ۲؛ نفرِ بعدی جایگاهِ ۳
+    # (قاعدهٔ «جایگاه»: رتبهٔ بعدی بعد از گروهِ مساوی، نه شمارهٔ ردیف)
     assert data["leaderboard"][1]["rank"] == 2
     assert data["leaderboard"][2]["rank"] == 2
-    assert data["leaderboard"][3]["rank"] == 4
+    assert data["leaderboard"][3]["rank"] == 3
 
     # سناریوی تساوی: رتبهٔ مشترک و سطحِ یکسان
     call_command(
@@ -219,3 +220,23 @@ def test_leaderboard_exposes_tie_flags(api_client: APIClient) -> None:
     # هیچ مسجدی با رتبهٔ صفر «مشترک» علامت نمی‌خورد
     zeros = [r for r in rows if r["completed_participants_count"] == 0]
     assert zeros and all(r["is_tied"] is False and r["tied_count"] == 0 for r in zeros)
+
+
+@pytest.mark.django_db()
+def test_rank_uses_shared_place_not_row_number(api_client: APIClient) -> None:
+    """قاعدهٔ جایگاه: ۱۴/۱۱/۱۱/۸ ⇒ ۱، ۲، ۲، ۳ — تا «سوم» و برنز وجود داشته باشد.
+
+    با قاعدهٔ ۱۲۲۴ رتبه‌ها ۱، ۲، ۲، ۴ می‌شد و جدول هرگز مدالِ برنز نداشت،
+    درحالی‌که سکوی صفحه سه جایگاه دارد. این تست همان تناقض را قفل می‌کند.
+    """
+    call_command("seed_mosques", stdout=StringIO())
+    mosques = list(Mosque.objects.filter(is_active=True).order_by("display_order", "id"))
+    for mosque, count in zip(mosques, [14, 11, 11, 8, 8, 3], strict=False):
+        Mosque.objects.filter(pk=mosque.pk).update(completed_exam_count=count)
+
+    rows = api_client.get("/api/v1/mosques/leaderboard/").json()["data"]["leaderboard"]
+    assert [r["rank"] for r in rows[:6]] == [1, 2, 2, 3, 3, 4]
+    # سطح‌ها هم با جایگاه هم‌خوان‌اند: جایگاه‌های ۲ و ۳ نقره‌ای‌اند
+    assert {r["tier"] for r in rows[1:5]} == {"silver"}
+    # سه ردیفِ اول دقیقاً همان سه جایگاهِ سکو هستند
+    assert {r["rank"] for r in rows[:3]} == {1, 2}
