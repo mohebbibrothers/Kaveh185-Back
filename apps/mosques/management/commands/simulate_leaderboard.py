@@ -24,6 +24,8 @@
     python manage.py simulate_leaderboard --scenario crowded --reset
     python manage.py simulate_leaderboard --list           # فهرستِ سناریوها
     python manage.py simulate_leaderboard --reset          # فقط صفرکردن
+    python manage.py simulate_leaderboard --recount        # بازشماری از کارنامه‌های واقعی
+    python manage.py simulate_leaderboard --dry-run        # فقط نشان بده چه می‌شود
 """
 
 from __future__ import annotations
@@ -91,6 +93,19 @@ class Command(BaseCommand):
             help="فقط صفر کن و سناریویی نساز.",
         )
         parser.add_argument(
+            "--recount",
+            action="store_true",
+            help=(
+                "شمارنده‌ها را از کارنامه‌های واقعیِ پایان‌یافته دوباره بساز "
+                "(بازگرداندنِ جدول به حالتِ اولیه پس از شبیه‌سازی)."
+            ),
+        )
+        parser.add_argument(
+            "--dry-run",
+            action="store_true",
+            help="فقط نشان بده چه چیزی تغییر می‌کند؛ چیزی ننویس.",
+        )
+        parser.add_argument(
             "--list",
             action="store_true",
             help="فهرستِ سناریوهای آماده و تعدادشان.",
@@ -121,6 +136,10 @@ class Command(BaseCommand):
         mosques = list(Mosque.objects.filter(is_active=True).order_by("display_order", "id"))
         if not mosques:
             raise CommandError("هیچ مسجدِ فعالی نیست. اول: python manage.py seed_mosques")
+
+        if options["recount"]:
+            self._recount(mosques, dry_run=bool(options["dry_run"]))
+            return
 
         if options["reset"] or options["only_reset"]:
             Mosque.objects.update(completed_exam_count=0, registered_count=0)
@@ -163,3 +182,93 @@ class Command(BaseCommand):
             )
         )
         self.stdout.write("حالا صفحهٔ /mosques را باز کنید (یا دکمهٔ تازه‌سازی مرورگر).")
+        self.stdout.write(
+            self.style.WARNING(
+                "برای بازگرداندنِ جدول به دادهٔ واقعی: "
+                "python manage.py simulate_leaderboard --recount"
+            )
+        )
+
+    def _recount(self, mosques: list[Mosque], *, dry_run: bool) -> None:
+        """شمارنده‌های هر مسجد را از **منبعِ حقیقت** (کارنامه‌ها) از نو می‌سازد.
+
+        چرا لازم است؟ شبیه‌سازی شمارنده‌های انبارشده را بالا می‌برد
+        (`completed_exam_count` و `registered_count`) و بعد از تست، آمارِ جدول
+        دیگر واقعی نیست. صفرکردن هم پاسخ درست نیست: اگر مسابقه واقعاً در جریان
+        باشد، صفر اعدادِ واقعی را می‌سوزاند. راهِ درست: همان کاری که موتورِ
+        آزمون در لحظه انجام می‌دهد — شمارش از `ExamAttempt`ها.
+        """
+        from django.db.models import Count
+
+        from apps.exam.choices import ExamAttemptStatus
+        from apps.exam.models import ExamAttempt
+
+        # ── منبعِ حقیقت: کارنامه‌های پایان‌یافته → «شرکت‌کنندهٔ کامل»
+        completed_rows = (
+            ExamAttempt.objects.filter(status=ExamAttemptStatus.COMPLETED)
+            .values("mosque_id")
+            .annotate(n=Count("id"))
+        )
+        completed = {row["mosque_id"]: int(row["n"]) for row in completed_rows}
+
+        # ── «ثبت‌نامی»: کسانی که این مسجد را انتخاب کرده‌اند — همان تعریفی که
+        #    خودِ جدول به کار می‌برد (شرکت‌کنندهٔ فعال با نقشِ participant)،
+        #    نه تعدادِ کارنامه‌ها. اگر تعریف یکی نباشد، عددِ ستونِ «ثبت‌نامی»
+        #    بعد از بازشماری با عددی که جدول نشان می‌دهد یکی نمی‌شود.
+        from apps.authentication.choices import UserRole
+        from apps.authentication.models import User
+
+        registered = {
+            row["mosque_id"]: int(row["n"])
+            for row in User.objects.filter(
+                is_active=True, role=UserRole.PARTICIPANT, mosque__isnull=False
+            )
+            .values("mosque_id")
+            .annotate(n=Count("id"))
+        }
+
+        changes: list[str] = []
+        for mosque in mosques:
+            new_completed = completed.get(mosque.pk, 0)
+            new_registered = max(registered.get(mosque.pk, 0), new_completed)
+            if (
+                new_completed == mosque.completed_exam_count
+                and new_registered == mosque.registered_count
+            ):
+                continue
+            changes.append(
+                f"  • {mosque.code}: کامل {mosque.completed_exam_count} → {new_completed}"
+                f" · ثبت‌نامی {mosque.registered_count} → {new_registered}"
+            )
+            if not dry_run:
+                Mosque.objects.filter(pk=mosque.pk).update(
+                    completed_exam_count=new_completed,
+                    registered_count=new_registered,
+                )
+
+        total = sum(completed.values())
+        if not changes:
+            self.stdout.write(
+                self.style.SUCCESS(f"هیچ تغییری لازم نیست — {total} شرکت‌کنندهٔ کاملِ واقعی.")
+            )
+            return
+
+        self.stdout.write("\n".join(changes))
+        if dry_run:
+            self.stdout.write(
+                self.style.WARNING(
+                    f"حالتِ آزمایشی: {len(changes)} مسجد تغییر می‌کرد "
+                    f"({total} شرکت‌کنندهٔ کاملِ واقعی). هیچ چیزی نوشته نشد."
+                )
+            )
+            return
+
+        from apps.core.cache_invalidation import invalidate_domain_cache
+
+        invalidate_domain_cache("mosques", reason="simulate_leaderboard:recount")
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"جدول به دادهٔ واقعی برگشت — {total} شرکت‌کنندهٔ کامل در "
+                f"{sum(1 for v in completed.values() if v)} مسجد."
+            )
+        )

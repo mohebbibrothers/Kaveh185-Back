@@ -2,17 +2,22 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from io import StringIO
 
 import pytest
 from django.core.management import call_command
+from django.utils import timezone
 from rest_framework.test import APIClient
 
+from apps.exam.choices import ExamAttemptStatus
+from apps.exam.models import ExamAttempt
 from apps.mosques.models import Mosque
 from apps.mosques.services import (
     increment_mosque_completed_exam_count,
     increment_mosque_registered_count,
 )
+from tests.factories import create_test_participant
 
 
 @pytest.mark.django_db()
@@ -240,3 +245,53 @@ def test_rank_uses_shared_place_not_row_number(api_client: APIClient) -> None:
     assert {r["tier"] for r in rows[1:5]} == {"silver"}
     # سه ردیفِ اول دقیقاً همان سه جایگاهِ سکو هستند
     assert {r["rank"] for r in rows[:3]} == {1, 2}
+
+
+@pytest.mark.django_db()
+def test_recount_restores_counters_from_real_attempts(api_client: APIClient) -> None:
+    """`--recount` آمارِ جدول را از کارنامه‌های واقعی بازمی‌سازد، نه از صفر.
+
+    سناریوی واقعی: ادمین با `simulate_leaderboard` جدول را برای تست پر کرده و
+    حالا می‌خواهد دادهٔ واقعی برگردد. صفرکردن پاسخ نیست (اگر مسابقه در جریان
+    باشد اعدادِ واقعی را می‌سوزاند)؛ بازشماری از `ExamAttempt` پاسخِ درست است.
+    """
+    call_command("seed_mosques", stdout=StringIO())
+    mosque = Mosque.objects.get(code="MSQ-01")
+    other = Mosque.objects.get(code="MSQ-02")
+
+    # دو کارنامهٔ واقعیِ پایان‌یافته برای یک مسجد
+    for i in range(2):
+        user = create_test_participant(seq=900 + i, mosque=mosque)
+        ExamAttempt.objects.create(
+            user=user,
+            mosque=mosque,
+            tracking_code=f"TRK-RECOUNT-{i}",
+            status=ExamAttemptStatus.COMPLETED,
+            expires_at=timezone.now() + timedelta(minutes=5),
+        )
+    # یک کارنامهٔ نیمه‌کاره (نباید «کامل» شمرده شود)
+    user = create_test_participant(seq=909, mosque=other)
+    ExamAttempt.objects.create(
+        user=user,
+        mosque=other,
+        tracking_code="TRK-RECOUNT-9",
+        status=ExamAttemptStatus.IN_PROGRESS,
+        expires_at=timezone.now() + timedelta(minutes=5),
+    )
+
+    # حالا شمارنده‌ها را با شبیه‌سازی خراب می‌کنیم
+    call_command("simulate_leaderboard", "--scenario", "realistic", "--force", stdout=StringIO())
+    assert Mosque.objects.get(pk=mosque.pk).completed_exam_count == 14
+
+    call_command("simulate_leaderboard", "--recount", "--force", stdout=StringIO())
+
+    mosque.refresh_from_db()
+    other.refresh_from_db()
+    assert mosque.completed_exam_count == 2
+    assert mosque.registered_count == 2
+    assert other.completed_exam_count == 0
+    assert other.registered_count == 1  # ثبت‌نام شده ولی کارنامه‌اش کامل نیست
+
+    board = api_client.get("/api/v1/mosques/leaderboard/").json()["data"]
+    assert board["total_completed_participants"] == 2
+    assert board["leaderboard"][0]["completed_participants_count"] == 2
