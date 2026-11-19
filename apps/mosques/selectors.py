@@ -131,6 +131,13 @@ def get_mosque_leaderboard_snapshot() -> dict[str, Any]:
         total_registered = sum(x["registered_users_count"] for x in enriched)
 
         ranks = competition_ranks(enriched)
+        # چند مسجد هر رتبه را دارند؟ «رتبهٔ مشترک» یک واقعیتِ جدول است و نباید
+        # هر کلاینت خودش دوباره حسابش کند (منبعِ اختلاف می‌شود). پس صریح
+        # می‌فرستیم: هر رتبه‌ای که بیش از یک مسجد داشته باشد ⇒ `is_tied`.
+        rank_usage: dict[int, int] = {}
+        for r in ranks:
+            if r > 0:
+                rank_usage[r] = rank_usage.get(r, 0) + 1
         leaderboard: list[dict[str, Any]] = []
         for idx, item in enumerate(enriched, start=1):
             rank = ranks[idx - 1]
@@ -154,6 +161,8 @@ def get_mosque_leaderboard_snapshot() -> dict[str, Any]:
             leaderboard.append(
                 {
                     "rank": rank,
+                    "is_tied": rank > 0 and rank_usage.get(rank, 0) > 1,
+                    "tied_count": rank_usage.get(rank, 0) if rank > 0 else 0,
                     "id": item["mosque_id"],
                     "initial": item["initial"],
                     "name_core": item["name_core"],

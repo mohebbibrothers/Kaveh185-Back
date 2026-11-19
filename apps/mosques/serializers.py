@@ -22,6 +22,10 @@ class MosqueLeaderboardItemSerializer(serializers.Serializer):
     """ساختار خروجی هر مسجد در جدول رنکینگ لحظه‌ای مشارکت."""
 
     rank = serializers.IntegerField()
+    # «رتبهٔ مشترک»: چند مسجد همین رتبه را دارند. از سرور می‌آید تا فرانت و
+    # بک هر دو یک حقیقت را نشان دهند (قاعدهٔ ۱۲۲۴: ۱، ۱، ۳ …).
+    is_tied = serializers.BooleanField(required=False, default=False)
+    tied_count = serializers.IntegerField(required=False, default=0)
     tier = serializers.CharField()
     tier_label = serializers.CharField()
     mosque_id = serializers.IntegerField()

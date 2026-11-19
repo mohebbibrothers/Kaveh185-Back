@@ -196,3 +196,26 @@ def test_simulate_leaderboard_reset_returns_to_starting_line(api_client: APIClie
     data = api_client.get("/api/v1/mosques/leaderboard/").json()["data"]
     assert data["total_completed_participants"] == 0
     assert all(r["rank"] == 0 for r in data["leaderboard"])
+
+
+@pytest.mark.django_db()
+def test_leaderboard_exposes_tie_flags(api_client: APIClient) -> None:
+    """`is_tied`/`tied_count` دقیقاً همان گروهِ هم‌امتیاز را می‌گویند."""
+    call_command("seed_mosques", stdout=StringIO())
+    mosques = list(Mosque.objects.filter(is_active=True).order_by("display_order", "id"))
+    for mosque, count in zip(mosques, [14, 11, 11, 3, 3, 3], strict=False):
+        Mosque.objects.filter(pk=mosque.pk).update(completed_exam_count=count)
+
+    rows = api_client.get("/api/v1/mosques/leaderboard/").json()["data"]["leaderboard"]
+
+    first = rows[0]
+    assert first["rank"] == 1
+    assert first["is_tied"] is False
+
+    tied = [r for r in rows if r["completed_participants_count"] == 11]
+    assert len(tied) == 2
+    assert all(r["rank"] == 2 and r["is_tied"] is True and r["tied_count"] == 2 for r in tied)
+
+    # هیچ مسجدی با رتبهٔ صفر «مشترک» علامت نمی‌خورد
+    zeros = [r for r in rows if r["completed_participants_count"] == 0]
+    assert zeros and all(r["is_tied"] is False and r["tied_count"] == 0 for r in zeros)
