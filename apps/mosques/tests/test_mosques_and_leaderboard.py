@@ -157,3 +157,42 @@ def test_leaderboard_exposes_display_initial_from_core_name(api_client: APIClien
 
 
 _ALPHA = "آاأإءبپتثجچحخدذرزژسشصضطظعغفقکگلمنوهیئؤ"
+
+
+@pytest.mark.django_db()
+def test_simulate_leaderboard_command_builds_scenarios(api_client: APIClient) -> None:
+    """دستورِ شبیه‌سازی، شمارنده‌ها را می‌سازد و کشِ جدول را باطل می‌کند."""
+    call_command("seed_mosques", stdout=StringIO())
+
+    call_command("simulate_leaderboard", "--scenario", "realistic", "--force", stdout=StringIO())
+    data = api_client.get("/api/v1/mosques/leaderboard/").json()["data"]
+    assert data["total_completed_participants"] == 62
+    assert data["leaderboard"][0]["completed_participants_count"] == 14
+    assert data["leaderboard"][0]["rank"] == 1
+    # دو مسجدِ بعدی هم‌امتیاز (۱۱) ⇒ رتبهٔ مشترک ۲ و نفرِ پنجم رتبهٔ ۴
+    assert data["leaderboard"][1]["rank"] == 2
+    assert data["leaderboard"][2]["rank"] == 2
+    assert data["leaderboard"][3]["rank"] == 4
+
+    # سناریوی تساوی: رتبهٔ مشترک و سطحِ یکسان
+    call_command(
+        "simulate_leaderboard", "--scenario", "tie", "--reset", "--force", stdout=StringIO()
+    )
+    tie = api_client.get("/api/v1/mosques/leaderboard/").json()["data"]["leaderboard"]
+    assert tie[0]["completed_participants_count"] == 5
+    tied = [r for r in tie if r["completed_participants_count"] == 5]
+    assert len(tied) == 4
+    assert {r["rank"] for r in tied} == {1}
+    assert {r["tier"] for r in tied} == {"gold"}
+
+
+@pytest.mark.django_db()
+def test_simulate_leaderboard_reset_returns_to_starting_line(api_client: APIClient) -> None:
+    """`--only-reset` همهٔ شمارنده‌ها را صفر می‌کند و جدول به خطِ شروع برمی‌گردد."""
+    call_command("seed_mosques", stdout=StringIO())
+    call_command("simulate_leaderboard", "--scenario", "realistic", "--force", stdout=StringIO())
+    call_command("simulate_leaderboard", "--only-reset", "--force", stdout=StringIO())
+
+    data = api_client.get("/api/v1/mosques/leaderboard/").json()["data"]
+    assert data["total_completed_participants"] == 0
+    assert all(r["rank"] == 0 for r in data["leaderboard"])
