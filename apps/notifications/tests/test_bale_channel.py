@@ -1309,13 +1309,9 @@ def test_doctor_reachable_and_loopback_variants(settings: Any) -> None:
     ):
         assert command._reachable(url, verdicts) is False
         assert command._loopback(url, verdicts) is False
-    with patch(
-        "apps.notifications.probe.http_call", return_value=(403, "{}")
-    ):
+    with patch("apps.notifications.probe.http_call", return_value=(403, "{}")):
         assert command._loopback(url, verdicts) is False
-    with patch(
-        "apps.notifications.probe.http_call", return_value=(0, "URLError")
-    ):
+    with patch("apps.notifications.probe.http_call", return_value=(0, "URLError")):
         assert command._loopback(url, verdicts) is False
         assert command._reachable(url, verdicts) is False
     assert len(verdicts) >= 3
@@ -1439,3 +1435,141 @@ def test_probe_loopback_reports_network_failure() -> None:
     with patch.object(probe, "http_call", return_value=(0, "URLError")):
         ok, message = probe.loopback("https://a/", "s")
     assert ok is False and "برقرار نشد" in message
+
+
+def test_webhook_command_probe_and_delete_paths(settings: Any) -> None:
+    """`--probe` و `--delete` و `--new-secret` و نبودِ توکن — همه با پیامِ روشن."""
+    from io import StringIO
+
+    from django.core.management import call_command
+    from django.core.management.base import CommandError
+
+    settings.BALE_BOT_TOKEN = "test-token"
+    settings.BALE_WEBHOOK_SECRET = ""
+    settings.BALE_WEBHOOK_URL = "https://api.kaveh185.ir/x/"
+
+    out = StringIO()
+    with patch("apps.notifications.probe.loopback", return_value=(True, "پاسخِ اپلیکیشن: 200")):
+        call_command("bale_webhook", "--probe", stdout=out)
+    assert "آزمونِ حلقه‌ای" in out.getvalue()
+
+    out = StringIO()
+    with patch("apps.notifications.bale._api", return_value={"ok": True, "result": True}):
+        call_command("bale_webhook", "--delete", stdout=out)
+    assert "حذف" in out.getvalue() or "برداشته" in out.getvalue()
+
+    out = StringIO()
+    call_command("bale_webhook", "--new-secret", stdout=out)
+    assert "BALE_WEBHOOK_SECRET=" in out.getvalue()
+
+    settings.BALE_BOT_TOKEN = ""
+    with pytest.raises(CommandError):
+        call_command("bale_webhook", stdout=StringIO())
+
+
+def test_webhook_command_reports_rejected_registration(settings: Any) -> None:
+    """اگر بله ثبت را نپذیرد یا شبکه بلرزد، CommandError با متنِ روشن."""
+    from io import StringIO
+
+    from django.core.management import call_command
+    from django.core.management.base import CommandError
+
+    from apps.notifications.bale import BaleError
+
+    settings.BALE_BOT_TOKEN = "test-token"
+    settings.BALE_WEBHOOK_SECRET = "s3cret"
+    settings.BALE_WEBHOOK_URL = "https://api.kaveh185.ir/x/"
+
+    with (
+        patch("apps.notifications.bale._api", return_value={"ok": False, "description": "nope"}),
+        pytest.raises(CommandError),
+    ):
+        call_command("bale_webhook", stdout=StringIO())
+
+    with (
+        patch("apps.notifications.bale._api", side_effect=BaleError("down")),
+        pytest.raises(CommandError),
+    ):
+        call_command("bale_webhook", stdout=StringIO())
+
+
+def test_webhook_command_warns_and_suggests_cron_when_unreachable(settings: Any) -> None:
+    """اگر نشانی از بیرون پاسخ نداد، صریح می‌گوید به کران برگردد."""
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    settings.BALE_BOT_TOKEN = "test-token"
+    settings.BALE_WEBHOOK_SECRET = "s3cret"
+    settings.BALE_WEBHOOK_URL = "https://api.kaveh185.ir/x/"
+    out = StringIO()
+    with (
+        patch("apps.notifications.bale._api", return_value={"ok": True, "result": {}}),
+        patch("apps.notifications.probe.health", return_value=(False, "۴۰۴")),
+    ):
+        call_command("bale_webhook", stdout=out)
+    text = out.getvalue()
+    assert "bale_webhook --delete" in text
+    assert "--skip-self-test" in text
+
+
+def test_webhook_command_show_and_print_url(settings: Any) -> None:
+    """`--print-url` فقط نشانی می‌دهد و `--show` وضعیت را."""
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    settings.BALE_BOT_TOKEN = "t"
+    settings.BALE_WEBHOOK_SECRET = "s"
+    settings.BALE_WEBHOOK_URL = "https://api.kaveh185.ir/x/"
+    out = StringIO()
+    call_command("bale_webhook", "--print-url", stdout=out)
+    assert out.getvalue().strip() == "https://api.kaveh185.ir/x/"
+
+    out = StringIO()
+    with patch(
+        "apps.notifications.bale._api",
+        return_value={
+            "ok": True,
+            "result": {"url": "https://api.kaveh185.ir/x/", "pending_update_count": 1},
+        },
+    ):
+        call_command("bale_webhook", "--show", stdout=out)
+    assert "آپدیتِ در انتظار: 1" in out.getvalue()
+
+
+def test_webhook_url_falls_back_to_allowed_hosts(settings: Any) -> None:
+    """بدونِ `BALE_WEBHOOK_URL`، دامنهٔ `api.` ترجیح دارد به اولین دامنه."""
+    from apps.notifications.management.commands.bale_webhook import Command
+
+    settings.BALE_WEBHOOK_URL = ""
+    settings.ALLOWED_HOSTS = ["www.kaveh185.ir", "api.kaveh185.ir"]
+    assert "api.kaveh185.ir" in Command()._resolve_url("")
+
+    settings.ALLOWED_HOSTS = ["www.kaveh185.ir"]
+    assert "www.kaveh185.ir" in Command()._resolve_url("")
+
+    settings.ALLOWED_HOSTS = ["localhost"]
+    assert Command()._resolve_url("").startswith("http://localhost")
+
+    settings.ALLOWED_HOSTS = []
+    from django.core.management.base import CommandError
+
+    with pytest.raises(CommandError):
+        Command()._resolve_url("")
+
+
+def test_bale_inbox_reports_webhook_race(monkeypatch: Any, tmp_path: Any) -> None:
+    """سنجشِ امنِ `_active_webhook` وقتی بله خطا می‌دهد."""
+    from apps.notifications.bale import BaleError
+    from apps.notifications.management.commands.bale_inbox import Command
+
+    with patch(
+        "apps.notifications.management.commands.bale_inbox._api", side_effect=BaleError("x")
+    ):
+        assert Command._active_webhook() == ""
+    with patch(
+        "apps.notifications.management.commands.bale_inbox._api",
+        return_value={"ok": True, "result": "s"},
+    ):
+        assert Command._active_webhook() == ""

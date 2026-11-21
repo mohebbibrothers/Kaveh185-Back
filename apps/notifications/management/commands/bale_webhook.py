@@ -20,6 +20,7 @@ from typing import Any
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError, CommandParser
 
+from apps.notifications import probe
 from apps.notifications.bale import BaleError, bale_is_configured
 
 
@@ -146,91 +147,24 @@ class Command(BaseCommand):
         """آزمونِ حلقه‌ای: همان درخواستی که بله می‌فرستد، از خودمان به خودمان.
 
         چرا؟ GETِ سلامت فقط می‌گوید «مسیر باز است». آنچه واقعاً باید کار کند
-        این است: یک POST با هدرِ کلید، که ۲۰۰ و `ok: true` برگرداند. اگر کلید
+        این است: یک POST با هدرِ کلید که ۲۰۰ و `ok: true` برگرداند. اگر کلید
         جابه‌جا باشد یا middleware درخواست را رد کند، همین‌جا لو می‌رود — نه
         وقتی کاربر واقعی `/start` می‌زند و هیچ پاسخی نمی‌گیرد.
         """
-        import json
-        import urllib.error
-        import urllib.request
-
         secret = str(getattr(settings, "BALE_WEBHOOK_SECRET", "") or "")
-        body = json.dumps(
-            {
-                "_probe": True,
-                "message": {
-                    "message_id": 1,
-                    "chat": {"id": 1, "first_name": "آزمون"},
-                    "from": {"first_name": "آزمون"},
-                    "text": "/start",
-                },
-            }
-        ).encode("utf-8")
-        headers = {"Content-Type": "application/json"}
-        if secret:
-            headers["X-Telegram-Bot-Api-Secret-Token"] = secret
-        request_ = urllib.request.Request(  # noqa: S310
-            url, data=body, headers=headers, method="POST"
-        )
-        try:
-            with urllib.request.urlopen(request_, timeout=10) as resp:  # noqa: S310  # nosec B310
-                raw = resp.read(600).decode("utf-8", errors="replace")
-                code = resp.status
-        except urllib.error.HTTPError as exc:
-            hint = (
-                " (کلیدِ وب‌هوک در `.env` با آنچه در بله ثبت شده یکی نیست)" if exc.code == 403 else ""
-            )
-            self._line(False, f"آزمونِ حلقه‌ای: پاسخ {exc.code}{hint}")
-            return
-        except Exception as exc:  # pragma: no cover - شبکهٔ بیرونی
-            self._line(False, f"آزمونِ حلقه‌ای انجام نشد ({type(exc).__name__}).")
-            return
-
-        try:
-            payload = json.loads(raw)
-        except json.JSONDecodeError:
-            payload = {}
-        if code == 200 and payload.get("ok") is True:
-            self._line(True, f"آزمونِ حلقه‌ای سالم است (handled={payload.get('handled')}).")
-        else:
-            self._line(False, f"آزمونِ حلقه‌ای پاسخِ نامنتظر داد ({code}): {raw[:120]}")
+        ok, message = probe.loopback(url, secret)
+        self._line(ok, f"آزمونِ حلقه‌ای: {message}")
 
     def _self_test(self, url: str) -> bool:
-        """آزمونِ خودکارِ وب‌هوک: آیا نشانی از بیرون واقعاً پاسخ می‌دهد؟
+        """آیا این نشانی از بیرون واقعاً خودِ اپلیکیشنِ ما است؟
 
-        چرا لازم است؟ `setWebhook` می‌گوید «ثبت شد» حتی وقتی آن نشانی ۴۰۴
-        می‌دهد؛ بله خطا را فقط در `getWebhookInfo` نگه می‌دارد و آپدیت‌ها صف
-        می‌شوند. آزمونِ زیر همان چیزی است که مرورگر می‌بیند: یک GET ساده به
-        مسیرِ سلامت. اگر پاسخِ خودِ اپلیکیشن نیامد، **همین حالا** هشدار می‌دهد،
-        نه فردا که کدها نرسیده‌اند.
+        `setWebhook` همیشه «ثبت شد» می‌گوید؛ ولی اگر نشانی ۴۰۴ بدهد یا صفحهٔ
+        دیگری ۲۰۰ بدهد، بله آپدیت‌ها را تحویل نمی‌دهد و خطا را فقط در
+        `getWebhookInfo` نگه می‌دارد — یعنی کاربر «شروع» می‌زند و هیچ نمی‌شود.
         """
-        import json
-        import urllib.error
-        import urllib.request
-
-        probe = url.rstrip("/") + "/"
-        try:
-            # آدرس از تنظیماتِ خودمان می‌آید و با https اجباری می‌شود:
-            # `_self_test` فقط نشانیِ ساخته‌شده توسطِ همین دستور را می‌زند.
-            with urllib.request.urlopen(probe, timeout=8) as resp:  # noqa: S310  # nosec B310
-                body = resp.read(400).decode("utf-8", errors="replace")
-                status = resp.status
-        except urllib.error.HTTPError as exc:
-            self._line(False, f"نشانیِ وب‌هوک از بیرون پاسخ {exc.code} داد: {probe}")
-            return False
-        except Exception as exc:  # pragma: no cover - شبکهٔ بیرونی
-            self._line(False, f"نشانیِ وب‌هوک از بیرون در دسترس نیست ({type(exc).__name__}).")
-            return False
-
-        try:
-            payload = json.loads(body)
-        except json.JSONDecodeError:
-            payload = {}
-        if status == 200 and payload.get("service") == "kaveh185-bale-webhook":
-            self._line(True, "نشانی از بیرون سالم است (پاسخِ سلامت دریافت شد).")
-            return True
-        self._line(False, f"نشانی پاسخ داد ولی این اپلیکیشن نبود ({status}): {body[:80]}")
-        return False
+        ok, message = probe.health(url)
+        self._line(ok, message)
+        return ok
 
     def _line(self, ok: bool, text: str) -> None:
         """یک سطرِ گزارش."""
@@ -245,16 +179,20 @@ class Command(BaseCommand):
         pinned = str(getattr(settings, "BALE_WEBHOOK_URL", "") or "").strip()
         if pinned:
             return pinned
+        # ⚠️ ترتیبِ ALLOWED_HOSTS روی این هاست `www` را اول می‌آورد و بله آپدیت‌ها
+        # را به آن می‌فرستد؛ حالا که هر دو به یک اپ می‌رسند کار می‌کند، ولی
+        # `api.` معنای درست‌تری دارد و اگر روزی سایت و API جدا شوند، `www`
+        # بی‌صدا وب‌هوک را می‌شکند. پس صریحاً `api.` ترجیح دارد.
         host = ""
-        for candidate in getattr(settings, "ALLOWED_HOSTS", []) or []:
-            text = str(candidate).strip()
-            if text.startswith("api.") or text.startswith("www."):
-                host = text
+        candidates = [str(c).strip() for c in (getattr(settings, "ALLOWED_HOSTS", []) or [])]
+        for prefer in ("api.", "www."):
+            host = next((c for c in candidates if c.startswith(prefer)), "")
+            if host:
                 break
         if not host:
             for candidate in getattr(settings, "ALLOWED_HOSTS", []) or []:
                 text = str(candidate).strip()
-                if text and not text.startswith(".") and text not in {"*", "localhost"}:
+                if text and not text.startswith(".") and text != "*":
                     host = text
                     break
         if not host:
@@ -262,7 +200,9 @@ class Command(BaseCommand):
                 "دامنه‌ای در ALLOWED_HOSTS پیدا نشد؛ نشانی را دستی بدهید: "
                 "--url https://api.example.ir" + WEBHOOK_PATH
             )
-        return f"https://{host}{WEBHOOK_PATH}"
+        # بله فقط https می‌پذیرد؛ استثنا فقط محیطِ توسعهٔ محلی است.
+        scheme = "http" if host.startswith(("localhost", "127.0.0.1", "[::1]")) else "https"
+        return f"{scheme}://{host}{WEBHOOK_PATH}"
 
     def _show(self) -> None:
         """وضعیتِ وب‌هوک را از خودِ بله می‌خواند."""
