@@ -351,6 +351,10 @@ BALE_BOT_USERNAME = config("BALE_BOT_USERNAME", default="")
 BALE_API_BASE = config("BALE_API_BASE", default="https://tapi.bale.ai")
 #: متنِ راهنمای «شروع» که در پیامِ اولِ ربات می‌آید.
 BALE_WEBHOOK_SECRET = config("BALE_WEBHOOK_SECRET", default="")
+#: نشانیِ کاملِ وب‌هوک. اگر خالی باشد از `ALLOWED_HOSTS` ساخته می‌شود؛ ولی
+#: چون روی این هاست `api.` هم `www.` هم بدونِ پیشوند به یک اپ می‌رسند، بهترین
+#: کار pin کردنِ آن در `.env` است تا هیچ دستوری حدس نزند.
+BALE_WEBHOOK_URL = config("BALE_WEBHOOK_URL", default="")
 BALE_START_HINT = config(
     "BALE_START_HINT", default="برای دریافت کد تأیید، شمارهٔ همراه خود را همین‌جا بفرستید."
 )

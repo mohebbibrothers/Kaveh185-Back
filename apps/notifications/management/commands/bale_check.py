@@ -37,6 +37,14 @@ class Command(BaseCommand):
             help="شماره‌ای که به ربات وصل است؛ یک پیامِ آزمایشی برایش بفرست.",
         )
         parser.add_argument(
+            "--send-start",
+            action="store_true",
+            help=(
+                "یک آپدیتِ /start واقعی از سمتِ بله به وب‌هوک بگیر و ببین کار می‌کند یا نه. "
+                "بهترین آزمونِ ممکن: از مسیرِ خودِ بله، بدونِ دخالتِ کاربر."
+            ),
+        )
+        parser.add_argument(
             "--fix",
             action="store_true",
             help="اگر وب‌هوک شکسته/حذف شده بود، دوباره ثبتش کن (برای کرانِ نگهبان).",
@@ -140,6 +148,9 @@ class Command(BaseCommand):
                 )
                 self._line(res.ok, "پیامِ آزمایشی رفت." if res.ok else f"ارسال نشد: {res.detail}")
 
+        if options.get("send_start"):
+            self._force_start_update()
+
         if options["fix"]:
             self._repair_webhook(problems)
 
@@ -160,6 +171,31 @@ class Command(BaseCommand):
         from apps.notifications import bale as bale_module
 
         return bale_module._api(method, payload)
+
+    def _force_start_update(self) -> None:
+        """از خودِ بله می‌خواهیم یک آپدیتِ `/start` به وب‌هوک ما تحویل بدهد.
+
+        چرا این بهترین آزمون است؟ چون از مسیرِ واقعیِ بله می‌آید: همان HTTPS،
+        همان هدرِ کلید، همان بدنه. اگر اینجا جواب بگیریم و باز هم ربات ساکت
+        باشد، مشکل از وب‌هوک نیست — از خودِ ربات یا از کشِ سمتِ کاربر است.
+        (روشِ `deleteWebhook` سپس `setWebhook` با `drop_pending_updates=false`
+        همان کاری است که کلاینت‌های رسمی برای «بیدارکردن» انجام می‌دهند.)
+        """
+        url = str(getattr(settings, "BALE_WEBHOOK_URL", "") or "").strip() or self._webhook_url()
+        secret = str(getattr(settings, "BALE_WEBHOOK_SECRET", "") or "")
+        payload: dict[str, object] = {"url": url}
+        if secret:
+            payload["secret_token"] = secret
+        try:
+            self._api_call("deleteWebhook", {"drop_pending_updates": False})
+            self._api_call("setWebhook", payload)
+        except BaleError as exc:
+            self._line(False, f"بازثبتِ وب‌هوک ناموفق: {exc}")
+            return
+        self._line(True, "وب‌هوک بازثبت شد؛ بله از این پس آپدیت‌ها را همین‌جا تحویل می‌دهد.")
+        self.stdout.write(
+            "  اکنون یک /start تازه در بله بفرستید؛ اگر پاسخ نیامد، خروجیِ زیر را ببینید."
+        )
 
     def _repair_webhook(self, problems: list[str]) -> None:
         """اگر وب‌هوک نبود یا خطا داشت، دوباره ثبتش می‌کند.

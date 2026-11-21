@@ -258,6 +258,10 @@ class BaleWebhookAPIView(APIView):
     permission_classes: list[Any] = []
     authentication_classes: list[Any] = []
     throttle_classes: list[Any] = []
+    # ⚠️ این مسیر از بیرون (بله) فراخوانی می‌شود و کوکی/توکنِ مرورگر ندارد؛
+    # CSRF هیچ معنایی این‌جا ندارد و اگر فعال بماند، درخواستِ بله با ۴۰۳ رد
+    # می‌شود — دقیقاً همان «ربات ساکت است» که سخت پیدا می‌شود.
+    csrf_exempt = True
 
     @extend_schema(
         tags=["Notifications & Bale"],

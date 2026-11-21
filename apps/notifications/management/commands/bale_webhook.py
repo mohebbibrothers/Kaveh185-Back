@@ -226,9 +226,12 @@ class Command(BaseCommand):
         self.stdout.write(style(f"  {mark} {text}"))
 
     def _resolve_url(self, given: str) -> str:
-        """نشانیِ وب‌هوک: مقدارِ داده‌شده، وگرنه از دامنهٔ امنِ تنظیمات."""
+        """نشانیِ وب‌هوک: `--url`، بعد `BALE_WEBHOOK_URL`، بعد دامنهٔ تنظیمات."""
         if given:
             return given
+        pinned = str(getattr(settings, "BALE_WEBHOOK_URL", "") or "").strip()
+        if pinned:
+            return pinned
         host = ""
         for candidate in getattr(settings, "ALLOWED_HOSTS", []) or []:
             text = str(candidate).strip()

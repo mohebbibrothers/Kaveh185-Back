@@ -1067,3 +1067,47 @@ def test_loopback_test_reports_mismatched_secret(settings: Any) -> None:
         ),
     ):
         cmd._loopback_test("https://api.kaveh185.ir/api/v1/notifications/bale/webhook/")
+
+
+def test_webhook_is_csrf_exempt() -> None:
+    """بله کوکی و توکنِ مرورگر ندارد؛ اگر CSRF فعال بماند، هر POST با ۴۰۳ رد می‌شود.
+
+    این خطا در آزمونِ دستی پیدا نمی‌شود (چون `Client` خودش توکن می‌سازد) و
+    فقط در دنیای واقعی به شکلِ «ربات ساکت است» ظاهر می‌شود.
+    """
+    from apps.notifications.views import BaleWebhookAPIView
+
+    assert BaleWebhookAPIView.csrf_exempt is True
+
+
+def test_send_start_reregisters_webhook_without_dropping_updates(settings: Any) -> None:
+    """`bale_check --send-start` وب‌هوک را بازثبت می‌کند و صف را دور نمی‌ریزد."""
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    settings.BALE_BOT_TOKEN = "test-token"
+    settings.BALE_WEBHOOK_SECRET = "s3cret"
+    settings.BALE_WEBHOOK_URL = "https://api.kaveh185.ir/api/v1/notifications/bale/webhook/"
+    calls: list[tuple[str, dict]] = []
+
+    def fake(method: str, payload: object = None, **_: object) -> dict:
+        calls.append((method, dict(payload or {})))
+        if method == "getWebhookInfo":
+            return {"ok": True, "result": {"url": settings.BALE_WEBHOOK_URL}}
+        return {"ok": True, "result": True}
+
+    out = StringIO()
+    with (
+        patch("apps.notifications.bale._api", side_effect=fake),
+        patch(
+            "apps.notifications.bale.get_me",
+            return_value={"ok": True, "username": "kaveh185_bot", "name": "کاوه"},
+        ),
+    ):
+        call_command("bale_check", "--send-start", stdout=out)
+
+    methods = [m for m, _ in calls]
+    assert "deleteWebhook" in methods and "setWebhook" in methods
+    drop = dict(calls[methods.index("deleteWebhook")][1])
+    assert drop.get("drop_pending_updates") is False  # پیام‌های معطل حفظ می‌شوند

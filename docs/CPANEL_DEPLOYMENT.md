@@ -230,6 +230,15 @@ cd ~/Kaveh185-Back && ~/virtualenv/Kaveh185-Back/3.12/bin/python manage.py bale_
 - `manage.py bale_webhook --show` وضعیتِ فعلیِ وب‌هوک را نشان می‌دهد.
 - `manage.py bale_webhook --delete` وب‌هوک را برمی‌دارد (برای برگشتن به کران).
 
+**بیدارکردنِ وب‌هوک از سمتِ خودِ بله**
+
+```bash
+python manage.py bale_check --send-start
+```
+
+وب‌هوک را با `deleteWebhook` + `setWebhook` بازثبت می‌کند (بدونِ دورریختنِ
+پیام‌های معطل) تا بله دوباره تحویل را شروع کند؛ بعد یک `/start` تازه بفرستید.
+
 **آزمونِ حلقه‌ای — شبیهِ‌سازیِ دقیقِ درخواستِ بله**
 
 ```bash
