@@ -10,6 +10,7 @@ from django.test import override_settings
 
 from apps.notifications.bale import BaleResult
 from apps.notifications.models import BaleLinkCode, BaleSubscriber
+from apps.notifications.providers import SMSGatewayResult
 from apps.notifications.services import (
     consume_bale_code,
     issue_bale_code,
@@ -145,3 +146,180 @@ def test_webhook_rejects_wrong_secret(client: Any) -> None:
         content_type="application/json",
     )
     assert response.status_code == 403
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  دستورها و وب‌هوک — مسیرهایی که در زمانِ اجرای واقعی قدم می‌زنند، پس
+#  نباید بی‌آزمون بمانند (پوششِ خطیِ CI این را جدی می‌گیرد).
+# ══════════════════════════════════════════════════════════════════════════
+
+
+def test_bale_inbox_reads_updates_and_links_phone(
+    tmp_path: Any, monkeypatch: Any, settings: Any
+) -> None:
+    """پیامِ شاملِ شماره در صندوقِ بله خوانده و ثبت می‌شود؛ offset ذخیره می‌گردد."""
+    from django.core.management import call_command
+
+    from apps.notifications.management.commands import bale_inbox as inbox_module
+
+    settings.BALE_BOT_TOKEN = "test-token"
+    monkeypatch.setattr(inbox_module, "OFFSET_FILE", tmp_path / "offset.json")
+
+    user = _make_participant(seq=920)
+    updates = {
+        "ok": True,
+        "result": [
+            {
+                "update_id": 41,
+                "message": {
+                    "chat": {"id": 31337, "first_name": "زهرا", "username": "z"},
+                    "from": {"first_name": "زهرا", "username": "z"},
+                    "text": user.phone_number.replace("0", "۰", 1),
+                },
+            }
+        ],
+    }
+    with (
+        patch("apps.notifications.management.commands.bale_inbox._api", return_value=updates),
+        patch(
+            "apps.notifications.management.commands.bale_inbox.send_bale_message",
+            return_value=BaleResult(ok=True),
+        ) as sender,
+    ):
+        call_command("bale_inbox", "--verbose")
+
+    assert BaleSubscriber.objects.get(phone_number=user.phone_number).chat_id == 31337
+    sender.assert_called_once()
+    assert (tmp_path / "offset.json").exists()
+
+
+def test_bale_inbox_skips_replies_in_dry_run(
+    tmp_path: Any, monkeypatch: Any, settings: Any
+) -> None:
+    """حالتِ `--dry-run` هیچ پیامی نمی‌فرستد و offset را هم جابه‌جا نمی‌کند."""
+    from django.core.management import call_command
+
+    from apps.notifications.management.commands import bale_inbox as inbox_module
+
+    settings.BALE_BOT_TOKEN = "test-token"
+    monkeypatch.setattr(inbox_module, "OFFSET_FILE", tmp_path / "offset.json")
+    updates = {
+        "ok": True,
+        "result": [{"update_id": 5, "message": {"chat": {"id": 1}, "text": "/start"}}],
+    }
+
+    with (
+        patch("apps.notifications.management.commands.bale_inbox._api", return_value=updates),
+        patch("apps.notifications.management.commands.bale_inbox.send_bale_message") as sender,
+    ):
+        call_command("bale_inbox", "--dry-run")
+
+    sender.assert_not_called()
+    assert not (tmp_path / "offset.json").exists()
+
+
+def test_bale_inbox_requires_token(settings: Any) -> None:
+    """بدونِ توکن، دستور با پیامِ روشن می‌ایستد (نه با خطای مبهم)."""
+    from django.core.management import call_command
+    from django.core.management.base import CommandError
+
+    settings.BALE_BOT_TOKEN = ""
+    with pytest.raises(CommandError):
+        call_command("bale_inbox")
+
+
+def test_deliver_outbox_sends_pending_otp_via_bale(settings: Any) -> None:
+    """پیامِ کدِ تأیید که پیامک نشده، از راهِ بله تحویل و در صف «ارسال‌شده» می‌شود."""
+    from django.core.management import call_command
+
+    from apps.core.choices import OutboxStatus
+    from apps.core.models import OutboxMessage
+
+    settings.BALE_BOT_TOKEN = "test-token"
+    user = _make_participant(seq=921)
+    BaleSubscriber.objects.create(phone_number=user.phone_number, chat_id=8888)
+    message = OutboxMessage.objects.create(
+        topic="sms.otp",
+        recipient=user.phone_number,
+        payload={"phone_number": user.phone_number, "code": "424242"},
+    )
+
+    # پیامک در دسترس نیست (همان وضعیتِ واقعیِ حوزه: بدونِ اینماد) ⇒ صف باید
+    # از بله فرار کند. اگر درگاه را سالم بگذاریم، همین تست سبز می‌شود بدونِ
+    # اینکه مسیرِ پشتیبان را لمس کند — یعنی تستِ بی‌ارزش.
+    with (
+        patch(
+            "apps.notifications.services.send_via_configured_gateway",
+            return_value=SMSGatewayResult(
+                provider="kavenegar", success=False, provider_message_id="", error_message="down"
+            ),
+        ),
+        patch(
+            "apps.notifications.bale.send_bale_message",
+            return_value=BaleResult(ok=True, message_id=9),
+        ),
+    ):
+        call_command("deliver_outbox")
+
+    message.refresh_from_db()
+    assert message.status == OutboxStatus.SENT
+    assert message.last_error == "delivered: bale"
+
+
+def test_deliver_outbox_dry_run_lists_without_sending(settings: Any) -> None:
+    """`--dry-run` فقط فهرست می‌کند؛ چیزی ارسال و چیزی تغییر نمی‌شود."""
+    from django.core.management import call_command
+
+    from apps.core.choices import OutboxStatus
+    from apps.core.models import OutboxMessage
+
+    settings.BALE_BOT_TOKEN = "test-token"
+    row = OutboxMessage.objects.create(topic="sms.otp", recipient="09121234567", payload={})
+    call_command("deliver_outbox", "--dry-run")
+    row.refresh_from_db()
+    assert row.status == OutboxStatus.PENDING
+
+
+@override_settings(BALE_BOT_TOKEN="test-token")
+def test_webhook_handles_start_phone_and_unknown_paths(client: Any) -> None:
+    """سه ورودیِ رایجِ کاربر در بله: `/start`، شماره، و متنِ نامفهوم — همه پاسخ می‌گیرند."""
+    user = _make_participant(seq=922)
+    with patch(
+        "apps.notifications.views.send_bale_message", return_value=BaleResult(ok=True)
+    ) as sender:
+        for text, expected in (
+            ("/start", "start"),
+            (user.phone_number, "phone"),
+            ("سلام", "unknown"),
+        ):
+            response = client.post(
+                "/api/v1/notifications/bale/webhook/",
+                data={"message": {"chat": {"id": 4321}, "text": text}},
+                content_type="application/json",
+            )
+            assert response.status_code == 200
+            assert response.json()["handled"] == expected
+    assert sender.call_count == 3
+
+
+@override_settings(BALE_BOT_TOKEN="test-token", BALE_BOT_USERNAME="kaveh185_bot")
+def test_bale_status_endpoint_reports_link_state(client: Any) -> None:
+    """گامِ دومِ فرم باید بداند شماره وصل است یا نه — بدونِ افشای اطلاعاتِ دیگر."""
+    user = _make_participant(seq=923)
+    BaleSubscriber.objects.create(phone_number=user.phone_number, chat_id=99)
+    res = client.get(f"/api/v1/notifications/bale/status/?phone_number={user.phone_number}")
+    assert res.status_code == 200
+    data = res.json()["data"]
+    assert data["linked"] is True
+    assert data["bot_username"] == "kaveh185_bot"
+
+
+def test_webhook_ignores_payload_without_chat(client: Any) -> None:
+    """آپدیتِ بدونِ گفتگو (مثلاً ویرایشِ پیام) نباید خطا بدهد."""
+    res = client.post(
+        "/api/v1/notifications/bale/webhook/",
+        data={"edited_message": {"text": "x"}},
+        content_type="application/json",
+    )
+    assert res.status_code == 200
+    assert res.json()["handled"] == "no_chat"
