@@ -1,16 +1,22 @@
 # ==============================================================================
 # Kaveh185 — Recommended cPanel Cron Jobs (Shared Hosting without Celery/Redis)
 # ==============================================================================
+#
+# ⚠️ پیش از افزودنِ این خطوط، مسیرِ پایتونِ همین سرور را پیدا کنید:
+#     ls ~/virtualenv/Kaveh185-Back/*/bin/python
+#   (روی این سرور: /home/kavehir/virtualenv/Kaveh185-Back/3.12/bin/python)
+#   سپس هر «PYTHON_BIN» را با همان مسیرِ کامل جای‌گزین کنید. مسیرِ اشتباه یعنی
+#   کران بی‌صدا هیچ کاری نمی‌کند: نه خطایی، نه پیامی — فقط صف پر می‌شود.
 
 # 1. Verify tamper-evident SHA-256 audit hash chain every hour
-0 * * * * cd ~/Kaveh185-Back && ~/virtualenv/Kaveh185-Back/3.13/bin/python manage.py verify_audit_chain >> ~/kaveh185_audit.log 2>&1
+0 * * * * cd ~/Kaveh185-Back && PYTHON_BIN manage.py verify_audit_chain >> ~/kaveh185_audit.log 2>&1
 
 # 2. Clear expired Django sessions daily at 03:30 AM
-30 3 * * * cd ~/Kaveh185-Back && ~/virtualenv/Kaveh185-Back/3.13/bin/python manage.py clearsessions >> ~/kaveh185_maintenance.log 2>&1
+30 3 * * * cd ~/Kaveh185-Back && PYTHON_BIN manage.py clearsessions >> ~/kaveh185_maintenance.log 2>&1
 
 # 3. صف پیام‌ها را خالی کن (پیامک؛ اگر نبود، کد تأیید از راهِ بله) — هر ۲ دقیقه
-*/2 * * * * cd ~/Kaveh185-Back && ~/virtualenv/Kaveh185-Back/3.13/bin/python manage.py deliver_outbox --limit 100 >> ~/kaveh185_outbox.log 2>&1
+*/2 * * * * cd ~/Kaveh185-Back && PYTHON_BIN manage.py deliver_outbox --limit 100 >> ~/kaveh185_outbox.log 2>&1
 
 # 4. صندوق ورودیِ ربات بله را بخوان (کاربر «شروع» می‌زند و شماره/کدِ اتصال را می‌فرستد)
 #    اگر وب‌هوک را در بله تنظیم کرده‌اید (`setWebhook`)، این خط لازم نیست.
-* * * * * cd ~/Kaveh185-Back && ~/virtualenv/Kaveh185-Back/3.13/bin/python manage.py bale_inbox >> ~/kaveh185_bale.log 2>&1
+* * * * * cd ~/Kaveh185-Back && PYTHON_BIN manage.py bale_inbox >> ~/kaveh185_bale.log 2>&1

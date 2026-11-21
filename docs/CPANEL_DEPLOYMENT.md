@@ -73,7 +73,7 @@ mysql -u kavehir_k185app -p -e "SELECT @@character_set_database, @@collation_dat
 ## ۱. مراحل استقرار در cPanel
 
 1. **ایجاد اپلیکیشن پایتون (`Setup Python App`)**:
-   - نسخهٔ پایتون: `Python 3.12` یا `3.13`
+   - نسخهٔ پایتون: `Python 3.12` (همان نسخه‌ای که در `Setup Python App` انتخاب می‌کنید)
    - مسیر اپلیکیشن (`Application root`): `Kaveh185-Back`
    - فایل راه‌انداز (`Application startup file`): `passenger_wsgi.py`
    - نقطهٔ ورود (`Application Entry point`): `application`
@@ -96,7 +96,8 @@ mysql -u kavehir_k185app -p -e "SELECT @@character_set_database, @@collation_dat
 
 3. **نصب پکیج‌ها، مایگریشن و بارگذاری اولیه**:
    ```bash
-   source ~/virtualenv/Kaveh185-Back/3.13/bin/activate
+   source ~/virtualenv/Kaveh185-Back/3.12/bin/activate   # مسیرِ واقعیِ خود را بگذارید:
+   # ls ~/virtualenv/Kaveh185-Back/*/bin/activate
    cd ~/Kaveh185-Back
    pip install -r requirements.txt
    python manage.py migrate
@@ -170,3 +171,45 @@ python manage.py shell -c "from apps.notifications.bale import get_me; print(get
 اگر شماره قبلاً وصل باشد، کدِ تأیید بی‌درنگ در بله می‌رود و هیچ کدِ اتصالی
 ساخته نمی‌شود. جدول‌های درگیر: `notifications_balesubscriber` (نگاشتِ شماره ⇄
 گفتگو) و `notifications_balelinkcode` (کدهای اتصال، فقط هش‌شده و کوتاه‌عمر).
+
+## ۶. عیب‌یابیِ سریع روی سرور (بدونِ نصبِ چیزی)
+
+**«`python: command not found`»** یعنی یا virtualenv فعال نشده، یا نسخهٔ مسیر عوض شده است:
+
+```bash
+ls ~/virtualenv/Kaveh185-Back/*/bin/python        # مسیرِ واقعی (مثلاً …/3.12/bin/python)
+~/virtualenv/Kaveh185-Back/3.12/bin/python -V     # باید نسخهٔ پایتون را چاپ کند
+```
+
+از این پس همه‌جا از **همان مسیرِ کامل** استفاده کنید (کران هم همین را می‌خواهد):
+
+```bash
+cd ~/Kaveh185-Back
+~/virtualenv/Kaveh185-Back/3.12/bin/python manage.py migrate
+~/virtualenv/Kaveh185-Back/3.12/bin/python manage.py bale_check
+```
+
+**«`python3: command not found`» در حالی که سایت کار می‌کند.** طبیعی است: پایتون روی
+این هاست فقط داخلِ virtualenv نصب است و از پوستهٔ عادی دیده نمی‌شود. برای اسکریپتِ
+کوتاه، از همان مفسرِ virtualenv استفاده کنید. این نسخه هر کاری را با یک دستور انجام
+می‌دهد — خواندنِ `.env`، ثبتِ وب‌هوک، و تستِ رسیدنِ پیام:
+
+```bash
+cd ~/Kaveh185-Back && ~/virtualenv/Kaveh185-Back/3.12/bin/python manage.py bale_webhook
+```
+
+پاسخِ سالم چنین است: `{"ok": true, ... "description": "Webhook was set"}`.
+
+- `manage.py bale_webhook --show` وضعیتِ فعلیِ وب‌هوک را نشان می‌دهد.
+- `manage.py bale_webhook --delete` وب‌هوک را برمی‌دارد (برای برگشتن به کران).
+
+**اگر نوشت `Webhook was set` ولی ربات جواب نمی‌دهد**، یعنی بله به نشانیِ ما نمی‌رسد؛
+وب‌هوک را بردارید و از کران استفاده کنید:
+
+```bash
+~/virtualenv/Kaveh185-Back/3.12/bin/python manage.py bale_webhook --delete
+~/virtualenv/Kaveh185-Back/3.12/bin/python manage.py bale_inbox --verbose   # تستِ دستیِ صندوق
+```
+
+سپس خطِ `bale_inbox` را در کران هر دقیقه اجرا کنید (فایل
+[`deploy/cpanel/cron_jobs.txt`](../deploy/cpanel/cron_jobs.txt)).

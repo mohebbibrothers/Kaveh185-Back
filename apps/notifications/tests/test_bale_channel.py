@@ -595,3 +595,87 @@ def test_status_survives_unreachable_bale(client: Any) -> None:
     res = client.get("/api/v1/notifications/bale/status/?phone_number=09121234567")
     assert res.status_code == 200
     assert res.json()["data"]["bot_username"] == ""
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  `bale_webhook` — ثبت/بازرسی/حذفِ وب‌هوک بدونِ دستِ کاربر روی URL
+# ══════════════════════════════════════════════════════════════════════════
+
+
+def _call_webhook(settings: Any, *args: str, api: Any = None) -> str:
+    """اجرای `bale_webhook` با پاسخِ جعلیِ بله و برگرداندنِ متنِ خروجی."""
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    settings.BALE_BOT_TOKEN = "test-token"
+    fake = api or (lambda method, payload=None, **_: {"ok": True, "result": True})
+    out = StringIO()
+    with patch("apps.notifications.bale._api", side_effect=fake):
+        call_command("bale_webhook", *args, stdout=out)
+    return out.getvalue()
+
+
+def test_webhook_command_builds_url_from_allowed_hosts(settings: Any) -> None:
+    """نشانی از دامنهٔ `api.` در `ALLOWED_HOSTS` ساخته می‌شود (نه از حدس)."""
+    settings.ALLOWED_HOSTS = ["kaveh185.ir", "api.kaveh185.ir"]
+    text = _call_webhook(settings, "--print-url")
+    assert text.strip() == "https://api.kaveh185.ir/api/v1/notifications/bale/webhook/"
+
+
+def test_webhook_command_requires_secret_or_warns(settings: Any) -> None:
+    """بدونِ کلید، ثبت انجام می‌شود ولی هشدارِ امنیتی صریح داده می‌شود."""
+    settings.ALLOWED_HOSTS = ["api.kaveh185.ir"]
+    settings.BALE_WEBHOOK_SECRET = ""
+    called: list[str] = []
+    captured: dict[str, object] = {}
+
+    def fake(method: str, payload: object = None, **_: object) -> dict:
+        called.append(method)
+        if method == "setWebhook":
+            captured.update(payload or {})
+        if method == "getWebhookInfo":
+            return {
+                "ok": True,
+                "result": {"url": "https://api.kaveh185.ir/x", "pending_update_count": 0},
+            }
+        return {"ok": True, "result": True}
+
+    text = _call_webhook(settings, api=fake)
+    assert "secret_token" not in captured  # کلیدِ خالی نباید فرستاده شود
+    assert "BALE_WEBHOOK_SECRET خالی است" in text
+    assert "setWebhook" in called
+
+
+def test_webhook_new_secret_generates_key_without_calling_bale(settings: Any) -> None:
+    """`--new-secret` کلید می‌سازد و آن را برای گذاشتن در `.env` چاپ می‌کند."""
+    settings.ALLOWED_HOSTS = ["api.kaveh185.ir"]
+    settings.BALE_WEBHOOK_SECRET = ""
+    text = _call_webhook(settings, "--new-secret")
+    assert "BALE_WEBHOOK_SECRET=" in text
+    assert len(text.split("BALE_WEBHOOK_SECRET=")[1].split()[0]) >= 40
+
+
+def test_webhook_show_explains_delivery_error(settings: Any) -> None:
+    """اگر بله نتوانسته به نشانی برسد، گزارش باید دلیل و راهِ حل را بگوید."""
+    settings.ALLOWED_HOSTS = ["api.kaveh185.ir"]
+
+    def fake(method: str, payload: object = None, **_: object) -> dict:
+        info = {
+            "url": "https://api.kaveh185.ir/api/v1/notifications/bale/webhook/",
+            "pending_update_count": 4,
+            "last_error_message": "Wrong response from the webhook: 404 Not Found",
+            "last_error_code": 404,
+        }
+        return {"ok": True, "result": info if method == "getWebhookInfo" else True}
+
+    text = _call_webhook(settings, "--show", api=fake)
+    assert "آپدیتِ در انتظار: 4" in text
+    assert "۴۰۳/۴۰۴" in text
+
+
+def test_webhook_delete_reports_success(settings: Any) -> None:
+    """`--delete` وب‌هوک را برمی‌دارد و می‌گوید از این پس کران باید بخواند."""
+    settings.ALLOWED_HOSTS = ["api.kaveh185.ir"]
+    text = _call_webhook(settings, "--delete")
+    assert "برداشته شد" in text
