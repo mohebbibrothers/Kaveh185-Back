@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
 import logging
 from typing import Any
 
 from django.conf import settings
+from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import status
@@ -215,6 +219,19 @@ def process_bale_message(
     }
 
 
+def _fingerprint(secret: str) -> str:
+    """اثرِ انگشتِ کلید: ۶ کاراکترِ اولِ SHA-256 یا رشتهٔ خالی.
+
+    چرا؟ شایع‌ترین علتِ ۴۰۳ این است که `.env` و بله **دو کلیدِ متفاوت** دارند
+    (کلید را عوض کردید و دوباره ثبت نکردید، یا `\r` انتهای خط). با این مقدار
+    می‌شود از مرورگر دید کدام کلید در اپ است، و در `bale_doctor` کنارِ کلیدِ
+    ثبت‌شده در بله گذاشت — بدونِ آنکه خودِ راز جایی نوشته شود.
+    """
+    if not secret:
+        return ""
+    return hashlib.sha256(secret.encode("utf-8")).hexdigest()[:6]
+
+
 def _safe_bale_reply(chat_id: int, text: str) -> bool:
     """پاسخ به کاربر در بله — بدونِ آنکه خطا کلِ وب‌هوک را بشکند.
 
@@ -276,12 +293,19 @@ class BaleWebhookAPIView(APIView):
         می‌زنند و اگر ۴۰۵ بگیرند، ثبت را رد می‌کنند. هم‌چنین این پاسخ نشان
         می‌دهد که مسیر واقعاً به اپلیکیشنِ درست وصل است.
         """
+        secret = str(getattr(settings, "BALE_WEBHOOK_SECRET", "") or "")
         return Response(
             {
                 "ok": True,
                 "service": "kaveh185-bale-webhook",
                 "configured": bale_is_configured(),
-                "secret_required": bool(str(getattr(settings, "BALE_WEBHOOK_SECRET", "") or "")),
+                "secret_required": bool(secret),
+                # اثرِ انگشتِ کلید: نه خودش، نه هشش — فقط ۶ کاراکترِ اولِ SHA-256.
+                # با این کار می‌شود بی‌آنکه راز لو برود فهمید دو طرف یک کلید
+                # دارند یا نه (کلیدِ کوتاه/بلند یا جابه‌جا، همان ۴۰۳ می‌سازد).
+                "secret_fingerprint": _fingerprint(secret),
+                "webhook_url": str(getattr(settings, "BALE_WEBHOOK_URL", "") or ""),
+                "time": timezone.now().isoformat(timespec="seconds"),
             }
         )
 
@@ -302,7 +326,38 @@ class BaleWebhookAPIView(APIView):
             request.headers.get("X-Bale-Secret", ""),
             request.headers.get("X-Telegram-Bot-Api-Secret-Token", ""),
         }
-        return expected in provided
+        return any(value and hmac.compare_digest(value, expected) for value in provided)
+
+    @staticmethod
+    def _payload(request: Request) -> dict:
+        """بدنهٔ JSON را از هر راهی که شد می‌خواند، بی‌آنکه ۴۰۰ بسازد.
+
+        دو سناریوی واقعی: (۱) واسطِ میزبان هدرِ Content-Type را عوض می‌کند و
+        DRF بدنه را پارس نمی‌کند؛ (۲) بدنهٔ ناقص/غیرِJSON می‌رسد. در هر دو
+        حالت `request.data` یا خطا می‌دهد یا `{}` می‌شود و اگر ما ۴۰۰ برگردانیم،
+        بله همان آپدیت را بی‌پایان دوباره می‌فرستد. پس اول بدنهٔ خام را
+        خودمان می‌خوانیم و فقط در آخرین مرحله به `request.data` تکیه می‌کنیم.
+        """
+        raw = b""
+        for getter in (lambda: request.body, lambda: request._request.body):
+            try:
+                raw = getter() or b""
+            except Exception:  # pragma: no cover - بدنهٔ مصرف‌شده
+                raw = b""
+            if raw:
+                break
+        if raw:
+            try:
+                parsed = json.loads(raw.decode("utf-8", errors="replace"))
+            except json.JSONDecodeError:
+                parsed = None
+            if isinstance(parsed, dict):
+                return parsed
+        try:
+            data = request.data
+        except Exception:
+            return {}
+        return data if isinstance(data, dict) else {}
 
     @extend_schema(
         tags=["Notifications & Bale"],
@@ -315,7 +370,11 @@ class BaleWebhookAPIView(APIView):
         if not self._authorized(request):
             return Response({"ok": False}, status=status.HTTP_403_FORBIDDEN)
 
-        payload = request.data if isinstance(request.data, dict) else {}
+        # ⚠️ دسترسی به بدنه: DRF فقط با Content-Typeِ درست بدنه را پارس می‌کند و
+        # اگر بله/پروکسی هدر را عوض کند، `request.data` خالی می‌شود و آپدیت
+        # بی‌صدا دور ریخته می‌شود (۲۰۰ می‌دهیم، هیچ کاری نمی‌کنیم — بدترین حالت).
+        # پس اگر پارس نشد، خودمان JSON را از بدنهٔ خام می‌خوانیم.
+        payload = self._payload(request)
         # آزمونِ حلقه‌ای (`bale_webhook --probe`) یک آپدیتِ ساختگی می‌فرستد تا کلِ
         # مسیر — کلید، ترتیبِ middleware، پردازش و پاسخ — سنجیده شود، ولی بدونِ
         # ارسالِ پیام به هیچ گفتگوی واقعی (تا وقتِ کاربر را نگیرد).
@@ -325,11 +384,19 @@ class BaleWebhookAPIView(APIView):
         if chat.get("id") is None:
             return Response({"ok": True, "handled": "no_chat"})
 
-        result = process_bale_message(
-            chat=chat,
-            text=str(message.get("text") or ""),
-            sender=message.get("from") or {},
-        )
+        # ⚠️ هر خطای پیش‌بینی‌نشده نباید به ۵۰۰ تبدیل شود: بله ۵۰۰ را «تحویل
+        # نشد» می‌بیند و همان آپدیت را بی‌پایان دوباره می‌فرستد. خطا را لاگ
+        # می‌کنیم و همان ۲۰۰ را با دلیلش برمی‌گردانیم؛ آن‌گاه عیب‌یابی از راهِ
+        # پاسخِ `bale_doctor` ممکن است، نه از دلِ یک حلقهٔ بی‌پایان.
+        try:
+            result = process_bale_message(
+                chat=chat,
+                text=str(message.get("text") or ""),
+                sender=message.get("from") or {},
+            )
+        except Exception:
+            logger.exception("پردازشِ آپدیتِ بله شکست خورد (chat=%s)", chat.get("id"))
+            return Response({"ok": True, "handled": "error", "replied": None})
         chat_id = int(chat["id"])
 
         # اگر کدِ اتصال تازه وصل شد و چالشِ فعالی داشت، همان کد را همین حالا بفرست

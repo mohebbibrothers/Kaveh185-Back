@@ -230,6 +230,19 @@ cd ~/Kaveh185-Back && ~/virtualenv/Kaveh185-Back/3.12/bin/python manage.py bale_
 - `manage.py bale_webhook --show` وضعیتِ فعلیِ وب‌هوک را نشان می‌دهد.
 - `manage.py bale_webhook --delete` وب‌هوک را برمی‌دارد (برای برگشتن به کران).
 
+**یک دستور، هفت لایه، یک حکم — `bale_doctor`**
+
+```bash
+python manage.py bale_doctor          # توکن، کلید، نشانی، ثبت، دسترس‌پذیری، پاسخِ اپ، تحویلِ بله
+python manage.py bale_doctor --fix    # بازثبت + سنجش، اگر چیزی لق بود
+python manage.py bale_doctor --watch 120   # همین حالا در بله /start بدهید و تغییرِ صف را ببینید
+python manage.py bale_doctor --report # بلوکِ گزارشِ بی‌راز برای فرستادن به پشتیبانی
+```
+
+هر لایه توضیح می‌دهد **چه شد و چه کاری لازم است**؛ خودِ کلید هیچ‌جا چاپ نمی‌شود،
+فقط «اثرِ انگشت» (۶ کاراکترِ اولِ SHA-256) که با آن می‌شود فهمید دو طرف یک کلید
+دارند یا نه.
+
 **بیدارکردنِ وب‌هوک از سمتِ خودِ بله**
 
 ```bash

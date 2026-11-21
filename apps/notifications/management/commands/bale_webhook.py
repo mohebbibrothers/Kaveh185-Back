@@ -44,17 +44,30 @@ class Command(BaseCommand):
     help = "ثبت، بازرسی یا حذفِ وب‌هوکِ ربات بله"
 
     def add_arguments(self, parser: CommandParser) -> None:
-        """گزینه‌های عمل و نشانی."""
+        """گزینه‌های عمل، نشانی و آزمون."""
         parser.add_argument("--show", action="store_true", help="فقط وضعیتِ وب‌هوک را نشان بده")
         parser.add_argument("--delete", action="store_true", help="وب‌هوک را بردار")
         parser.add_argument(
-            "--url", default="", help="نشانیِ کاملِ وب‌هوک (پیش‌فرض: دامنهٔ API + مسیرِ استاندارد)"
+            "--url", default="", help="نشانیِ کاملِ وب‌هوک (پیش‌فرض: BALE_WEBHOOK_URL یا دامنهٔ API)"
         )
         parser.add_argument("--print-url", action="store_true", help="فقط نشانیِ پیشنهادی را چاپ کن")
         parser.add_argument(
             "--new-secret",
             action="store_true",
             help="اگر کلید خالی است، یک کلیدِ تصادفی بساز و همان را چاپ کن (در .env بگذار)",
+        )
+        parser.add_argument(
+            "--probe",
+            action="store_true",
+            help=(
+                "آزمونِ حلقه‌ای: همان POSTای که بله می‌فرستد (با هدرِ کلید) به خودِ وب‌هوک بزن، "
+                "بی‌آنکه به هیچ گفتگویی پیام برود."
+            ),
+        )
+        parser.add_argument(
+            "--skip-self-test",
+            action="store_true",
+            help="آزمونِ دسترس‌پذیری از بیرون را رد کن (اگر سرور نتواند دامنهٔ خودش را باز کند).",
         )
 
     def handle(self, *args: Any, **options: Any) -> None:

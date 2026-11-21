@@ -1111,3 +1111,331 @@ def test_send_start_reregisters_webhook_without_dropping_updates(settings: Any) 
     assert "deleteWebhook" in methods and "setWebhook" in methods
     drop = dict(calls[methods.index("deleteWebhook")][1])
     assert drop.get("drop_pending_updates") is False  # پیام‌های معطل حفظ می‌شوند
+
+
+@override_settings(BALE_WEBHOOK_SECRET="s3cret", BALE_WEBHOOK_URL="https://api.kaveh185.ir/x/")
+def test_health_endpoint_exposes_fingerprint_but_not_the_secret(client: Any) -> None:
+    """مرورگر باید بتواند بفهمد دو طرف یک کلید دارند، بدونِ دیدنِ خودِ کلید."""
+    res = client.get("/api/v1/notifications/bale/webhook/")
+    body = res.json()
+    assert res.status_code == 200
+    assert body["secret_fingerprint"] and body["secret_fingerprint"] != "s3cret"
+    assert "s3cret" not in str(body)
+    assert len(body["secret_fingerprint"]) == 6
+
+
+@override_settings(BALE_WEBHOOK_SECRET="")
+def test_webhook_survives_broken_json_body(client: Any) -> None:
+    """بدنهٔ خراب ⇒ ۲۰۰ با `no_chat`، نه ۵۰۰ (۵۰۰ = تحویلِ بی‌پایانِ همان آپدیت)."""
+    res = client.post(
+        "/api/v1/notifications/bale/webhook/",
+        data=b"not-json",
+        content_type="application/json",
+    )
+    assert res.status_code == 200
+
+
+@override_settings(BALE_WEBHOOK_SECRET="s3cret")
+def test_webhook_returns_ok_even_if_processing_explodes(client: Any) -> None:
+    """اگر پردازشِ پیام بترکد، ۲۰۰ با `handled=error` برمی‌گردد، نه ۵۰۰."""
+    with patch("apps.notifications.views.process_bale_message", side_effect=RuntimeError("boom")):
+        res = client.post(
+            "/api/v1/notifications/bale/webhook/",
+            data={"message": {"chat": {"id": 5}, "text": "/start"}},
+            content_type="application/json",
+            headers={"X-Telegram-Bot-Api-Secret-Token": "s3cret"},
+        )
+    assert res.status_code == 200
+    assert res.json()["handled"] == "error"
+
+
+def test_doctor_reports_every_layer_and_a_verdict(settings: Any) -> None:
+    """`bale_doctor` هفت لایه را می‌سنجد و در پایان یک حکمِ صریح می‌دهد."""
+    import json as jsonlib
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    settings.BALE_BOT_TOKEN = "test-token"
+    settings.BALE_WEBHOOK_SECRET = "s3cret"
+    settings.BALE_WEBHOOK_URL = "https://api.kaveh185.ir/api/v1/notifications/bale/webhook/"
+
+    def fake_api(method: str, payload: object = None, **_: object) -> dict:
+        if method == "getWebhookInfo":
+            return {
+                "ok": True,
+                "result": {"url": settings.BALE_WEBHOOK_URL, "pending_update_count": 0},
+            }
+        return {"ok": True, "result": True}
+
+    def fake_http(url: str, **_: object) -> tuple[int, str]:
+        if "webhook" in url:
+            return 200, jsonlib.dumps(
+                {"ok": True, "service": "kaveh185-bale-webhook", "handled": "start"}
+            )
+        return 200, "{}"
+
+    out = StringIO()
+    with (
+        patch("apps.notifications.bale._api", side_effect=fake_api),
+        patch(
+            "apps.notifications.bale.get_me",
+            return_value={"ok": True, "username": "kaveh185_bot", "name": "کاوه"},
+        ),
+        patch(
+            "apps.notifications.probe.http_call",
+            side_effect=fake_http,
+        ),
+    ):
+        call_command("bale_doctor", stdout=out)
+    text = out.getvalue()
+    for layer in ("۱)", "۲)", "۳)", "۴)", "۵)", "۶)", "۷)"):
+        assert layer in text
+    assert "حکم:" in text
+
+
+def test_doctor_translates_bale_delivery_errors() -> None:
+    """از متنِ خطای بله، کارِ درست استخراج می‌شود (نه پیامِ مبهم)."""
+    from apps.notifications.management.commands.bale_doctor import Command
+
+    assert "کلید" in Command._error_hint("Wrong response from the webhook: 403 Forbidden")
+    assert "نمی‌رسد" in Command._error_hint("Wrong response from the webhook: 404 Not Found")
+    assert "لاگ" in Command._error_hint(
+        "Wrong response from the webhook: 500 Internal Server Error"
+    )
+
+
+def test_doctor_fix_reregisters_and_reports_without_leaking_secret(settings: Any) -> None:
+    """`bale_doctor --fix --report` بازثبت می‌کند و گزارشِ بی‌راز می‌دهد."""
+    import json as jsonlib
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    settings.BALE_BOT_TOKEN = "test-token"
+    settings.BALE_WEBHOOK_SECRET = "s3cret"
+    settings.BALE_WEBHOOK_URL = "https://api.kaveh185.ir/api/v1/notifications/bale/webhook/"
+    methods: list[str] = []
+
+    def fake_api(method: str, payload: object = None, **_: object) -> dict:
+        methods.append(method)
+        if method == "getWebhookInfo":
+            return {
+                "ok": True,
+                "result": {"url": settings.BALE_WEBHOOK_URL, "pending_update_count": 0},
+            }
+        return {"ok": True, "result": True}
+
+    def fake_http(url: str, **_: object) -> tuple[int, str]:
+        return 200, jsonlib.dumps(
+            {"ok": True, "service": "kaveh185-bale-webhook", "handled": "start"}
+        )
+
+    out = StringIO()
+    with (
+        patch("apps.notifications.bale._api", side_effect=fake_api),
+        patch(
+            "apps.notifications.bale.get_me",
+            return_value={"ok": True, "username": "kaveh185_bot", "name": "کاوه"},
+        ),
+        patch("apps.notifications.probe.http_call", side_effect=fake_http),
+    ):
+        call_command("bale_doctor", "--fix", "--report", stdout=out)
+    text = out.getvalue()
+    assert "setWebhook" in methods
+    assert "secret_fingerprint" in text
+    assert "s3cret" not in text  # راز هرگز چاپ نمی‌شود
+    assert "حکم:" in text
+
+
+def _doctor(**settings_overrides: Any):
+    """یک نمونهٔ Command با استایلِ واقعی، برای صدا زدنِ لایه‌ها یکی‌یکی."""
+    from io import StringIO
+
+    from apps.notifications.management.commands.bale_doctor import Command
+
+    return Command(stdout=StringIO(), stderr=StringIO())
+
+
+@override_settings(BALE_WEBHOOK_SECRET="", BALE_WEBHOOK_URL="http://insecure/x/")
+def test_doctor_secret_and_url_layers(settings: Any) -> None:
+    """کلیدِ خالی و نشانیِ غیرِhttps هر دو باید در حکم بیایند."""
+    command = _doctor()
+    verdicts: list[str] = []
+    assert command._secret(verdicts) is True
+    command._url_report("http://insecure/x/", verdicts)
+    text = command.stdout.getvalue()  # type: ignore[attr-defined]
+    assert "کلید تنظیم نشده" in text
+    assert "https" in text
+    assert len(verdicts) == 2
+
+
+@override_settings(BALE_WEBHOOK_SECRET="  spaced  ")
+def test_doctor_detects_whitespace_in_secret(settings: Any) -> None:
+    """فاصله/CR در کلید ⇒ ۴۰۳ِ بی‌توضیح؛ دستور باید صریح بگوید."""
+    command = _doctor()
+    verdicts: list[str] = []
+    command._secret(verdicts)
+    assert any("پاک‌سازی" in v for v in verdicts)
+
+
+def test_doctor_token_layer_reports_bad_token(settings: Any) -> None:
+    """توکنِ نامعتبر ⇒ لایهٔ ۱ قرمز، نه استثنای خام."""
+    settings.BALE_BOT_TOKEN = ""
+    command = _doctor()
+    assert command._token() is False
+
+    settings.BALE_BOT_TOKEN = "x"
+    with patch("apps.notifications.bale.get_me", side_effect=BaleErrorLike("401")):
+        assert command._token() is False
+
+
+def BaleErrorLike(message: str):
+    from apps.notifications.bale import BaleError
+
+    return BaleError(message)
+
+
+def test_doctor_reachable_and_loopback_variants(settings: Any) -> None:
+    """هر پاسخِ ناخواسته باید توضیحِ خودش را داشته باشد (۴۰۳/۴۰۴/بدونِ‌پاسخ)."""
+    settings.BALE_WEBHOOK_SECRET = "s3cret"
+    url = "https://api.kaveh185.ir/x/"
+    verdicts: list[str] = []
+
+    command = _doctor()
+    with patch(
+        "apps.notifications.probe.http_call",
+        return_value=(404, "<html>not found</html>"),
+    ):
+        assert command._reachable(url, verdicts) is False
+        assert command._loopback(url, verdicts) is False
+    with patch(
+        "apps.notifications.probe.http_call", return_value=(403, "{}")
+    ):
+        assert command._loopback(url, verdicts) is False
+    with patch(
+        "apps.notifications.probe.http_call", return_value=(0, "URLError")
+    ):
+        assert command._loopback(url, verdicts) is False
+        assert command._reachable(url, verdicts) is False
+    assert len(verdicts) >= 3
+
+
+def test_doctor_delivery_layer_variants() -> None:
+    """لایهٔ ۷: نبودِ وب‌هوک، صفِ پر، و وضعیتِ سالم سه پیامِ متفاوت دارند."""
+    command = _doctor()
+    verdicts: list[str] = []
+    command._delivery({}, verdicts)
+    command._delivery({"url": "u", "pending_update_count": 3}, verdicts)
+    command._delivery({"url": "u", "pending_update_count": 0}, verdicts)
+    text = command.stdout.getvalue()  # type: ignore[attr-defined]
+    assert "ثبت نشود" in text
+    assert "سالم نیست" in text
+    assert "بی‌خطاست" in text
+
+
+def test_doctor_registration_handles_api_errors(settings: Any) -> None:
+    """اگر getWebhookInfo خودش خطا بدهد، باید گزارش شود نه استثنا."""
+    settings.BALE_WEBHOOK_SECRET = "s3cret"
+    command = _doctor()
+    verdicts: list[str] = []
+    with patch("apps.notifications.bale._api", side_effect=BaleErrorLike("boom")):
+        assert command._registration("https://a/", verdicts) == {}
+    with patch("apps.notifications.bale._api", return_value={"ok": True, "result": "weird"}):
+        assert command._registration("https://a/", verdicts) == {}
+    with patch("apps.notifications.bale._api", return_value={"ok": True, "result": {"url": ""}}):
+        command._registration("https://a/", verdicts)
+    assert any("ثبت نیست" in v for v in verdicts)
+
+
+def test_doctor_reregister_failure_is_reported(settings: Any) -> None:
+    settings.BALE_WEBHOOK_SECRET = "s3cret"
+    command = _doctor()
+    with patch("apps.notifications.bale._api", side_effect=BaleErrorLike("nope")):
+        command._reregister("https://a/")
+    assert "ناموفق" in command.stdout.getvalue()  # type: ignore[attr-defined]
+
+
+@override_settings(BALE_WEBHOOK_SECRET="s3cret", BALE_WEBHOOK_URL="https://api.x/y/")
+def test_doctor_verdict_branches() -> None:
+    """سه حکمِ ممکن: آماده / نیمه‌باز / آماده‌نبودن."""
+    command = _doctor()
+    command._verdict([], token_ok=True, secret_ok=True, get_ok=True, post_ok=True)
+    command._verdict([], token_ok=True, secret_ok=True, get_ok=True, post_ok=False)
+    command._verdict(["x"], token_ok=False, secret_ok=True, get_ok=False, post_ok=False)
+    text = command.stdout.getvalue()  # type: ignore[attr-defined]
+    assert "آماده است" in text
+    assert "زنجیره کامل نیست" in text
+    assert "آماده نیست" in text
+    assert "  → x" in text
+
+
+def test_http_call_returns_status_codes(monkeypatch: Any) -> None:
+    """`probe.http_call` کدِ وضعیت را حتی روی ۴xx برمی‌گرداند و روی خطای شبکه صفر."""
+    import io as iomod
+    import urllib.error
+
+    from apps.notifications import probe
+
+    class Resp(iomod.BytesIO):
+        status = 200
+
+    monkeypatch.setattr("urllib.request.urlopen", lambda *a, **k: Resp(b'{"ok": true}'))
+    assert probe.http_call("https://a/") == (200, '{"ok": true}')
+
+    def boom(*a: Any, **k: Any) -> Any:
+        raise urllib.error.HTTPError("u", 403, "no", {}, None)  # type: ignore[arg-type]
+
+    monkeypatch.setattr("urllib.request.urlopen", boom)
+    assert probe.http_call("https://a/")[0] == 403
+
+    def netfail(*a: Any, **k: Any) -> Any:
+        raise OSError("down")
+
+    monkeypatch.setattr("urllib.request.urlopen", netfail)
+    status, name = probe.http_call("https://a/")
+    assert status == 0 and name == "OSError"
+
+
+def test_doctor_watch_prints_state_changes(settings: Any, monkeypatch: Any) -> None:
+    """پایشِ زنده تغییرِ صف/خطا را چاپ می‌کند و در پایان می‌گوید تمام شد."""
+    settings.BALE_BOT_TOKEN = "t"
+    command = _doctor()
+    sequence = iter(
+        [
+            {"ok": True, "result": {"pending_update_count": 2}},
+            {"ok": True, "result": {"pending_update_count": 0, "last_error_message": "boom"}},
+        ]
+    )
+
+    def fake_api(method: str, payload: object = None, **_: object) -> dict:
+        return next(sequence, {"ok": True, "result": {"pending_update_count": 0}})
+
+    ticks = iter([0.0, 1.0, 2.0, 3.0, 99.0])
+    monkeypatch.setattr("time.monotonic", lambda: next(ticks))
+    monkeypatch.setattr("time.sleep", lambda *_: None)
+    with patch("apps.notifications.bale._api", side_effect=fake_api):
+        command._watch(30)
+    text = command.stdout.getvalue()  # type: ignore[attr-defined]
+    assert "صف=" in text and "پایانِ پایش" in text
+
+
+def test_probe_health_distinguishes_real_app_from_any_200() -> None:
+    """۲۰۰ِ هر صفحه‌ای کافی نیست؛ فقط پاسخِ خودِ سرویس سالم است."""
+    from apps.notifications import probe
+
+    with patch.object(probe, "http_call", return_value=(200, "<html>splash</html>")):
+        ok, message = probe.health("https://a/")
+    assert ok is False and "این اپلیکیشن نبود" in message
+
+    with patch.object(probe, "http_call", return_value=(0, "URLError")):
+        ok, message = probe.health("https://a/")
+    assert ok is False and "پاسخ نیامد" in message
+
+
+def test_probe_loopback_reports_network_failure() -> None:
+    from apps.notifications import probe
+
+    with patch.object(probe, "http_call", return_value=(0, "URLError")):
+        ok, message = probe.loopback("https://a/", "s")
+    assert ok is False and "برقرار نشد" in message

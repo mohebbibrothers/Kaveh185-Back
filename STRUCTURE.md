@@ -197,6 +197,7 @@ Kaveh185-Back/apps/
 │   ├── bale.py
 │   ├── choices.py  # مقادیر ثابت و ماشین‌های حالت دامنه
 │   ├── models.py  # مدل‌های داده و قیود یکپارچگی دیتابیس
+│   ├── probe.py
 │   ├── providers.py
 │   ├── selectors.py  # خواندن داده و کوئری‌های بهینه‌شده (بدون side effect)
 │   ├── serializers.py  # قرارداد اعتبارسنجی ورودی و خروجی
