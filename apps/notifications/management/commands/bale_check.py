@@ -99,8 +99,10 @@ class Command(BaseCommand):
         else:
             self._line(
                 False,
-                "وب‌هوک تنظیم نشده — پس باید cron خطِ `bale_inbox` را هر دقیقه اجرا کند.",
+                "وب‌هوک تنظیم نشده — پس باید cron خطِ `bale_inbox` را هر دقیقه اجرا کند. "
+                "بدونِ هیچ‌کدام، کاربر «شروع» می‌زند و **هیچ پاسخی نمی‌گیرد**.",
             )
+            problems.append("نه وب‌هوک ثبت است و نه (احتمالاً) cronِ `bale_inbox`؛ یکی را فعال کن.")
         if not secret:
             self._line(
                 False,
@@ -167,10 +169,17 @@ class Command(BaseCommand):
             "  آزمونِ زندهٔ وب‌هوک: در بله به @kaveh185_bot پیام `/start` بدهید، "
             "بعد همین دستور را با `--ping-webhook` دوباره بزنید."
         )
-        _, info = self._webhook_state()
+        url, info = self._webhook_state()
         pending = int(info.get("pending_update_count") or 0)
         last_error = str(info.get("last_error_message") or "")
-        if info.get("url") and not last_error and pending == 0:
+        if not url:
+            self._line(
+                False,
+                "وب‌هوک ثبت نیست؛ پس تازه‌ترین پیامِ کاربر در صفِ `getUpdates` مانده و "
+                "فقط با `bale_inbox` خوانده می‌شود.",
+            )
+            return
+        if not last_error and pending == 0:
             self._line(True, "بله آپدیتی در صف ندارد؛ وب‌هوک سالم به نظر می‌رسد.")
         elif last_error:
             self._line(False, f"آخرین خطای تحویل: {last_error}")

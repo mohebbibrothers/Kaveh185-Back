@@ -831,3 +831,21 @@ def test_bale_check_ping_explains_live_webhook_test(settings: Any) -> None:
     )
     assert "آزمونِ زندهٔ وب‌هوک" in text
     assert "سالم به نظر می‌رسد" in text
+
+
+def test_bale_check_without_webhook_explains_the_silent_trap(settings: Any) -> None:
+    """اگر نه وب‌هوک باشد نه کران، کاربر «شروع» می‌زند و هیچ پاسخی نمی‌گیرد.
+
+    این تفکیک مهم است چون در گزارش، «وب‌هوک تنظیم نشده» فقط یک هشدارِ ملایم
+    به نظر می‌رسد؛ در واقع یعنی هیچ‌کس پیامِ کاربر را نمی‌خواند.
+    """
+    text = _run_check2(settings, {"url": "", "pending_update_count": 1})
+    assert "هیچ پاسخی نمی‌گیرد" in text
+    assert "نه وب‌هوک ثبت است" in text
+    assert "هنوز آماده نیست" in text
+
+
+def test_bale_check_ping_without_webhook_says_where_the_message_is(settings: Any) -> None:
+    """با `--ping-webhook` و بدونِ وب‌هوک، پیام در صفِ getUpdates است — همان را می‌گوید."""
+    text = _run_check2(settings, {"url": "", "pending_update_count": 1}, "--ping-webhook")
+    assert "صفِ `getUpdates`" in text
