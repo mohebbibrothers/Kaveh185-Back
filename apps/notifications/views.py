@@ -20,7 +20,7 @@ from apps.core.outbox import relay_pending_outbox
 from apps.core.pagination import StandardLimitOffsetPagination
 from apps.core.responses import success_response
 
-from .bale import BaleError, bale_is_configured, send_bale_message
+from .bale import BaleError, bale_is_configured, get_me, send_bale_message
 from .choices import SMSCategory
 from .selectors import get_sms_delivery_logs_queryset
 from .serializers import AdminSendTestSMSInputSerializer, SMSDeliveryLogSerializer
@@ -124,6 +124,22 @@ def _safe_bale_reply(chat_id: int, text: str) -> bool:
     except BaleError as exc:
         logger.warning("پاسخِ بله ارسال نشد (chat=%s): %s", chat_id, exc)
         return False
+
+
+def _bale_username() -> str:
+    """نامِ کاربریِ ربات: اول از تنظیمات، و اگر خالی بود از خودِ بله.
+
+    چرا از بله هم می‌پرسیم؟ چون نامی که در فرمِ ثبت‌نام به کاربر نشان می‌دهیم
+    باید همان رباتی باشد که واقعاً پیام می‌دهد؛ یک «_» جابه‌جا در تنظیمات،
+    کاربر را به رباتِ دیگری می‌فرستد و کدش هیچ‌وقت نمی‌آید.
+    """
+    configured = str(getattr(settings, "BALE_BOT_USERNAME", "") or "").strip().lstrip("@")
+    if configured:
+        return configured
+    try:
+        return str(get_me().get("username") or "")
+    except BaleError:
+        return ""
 
 
 class BaleWebhookAPIView(APIView):
@@ -268,7 +284,7 @@ class BaleChannelStatusAPIView(APIView):
                 "ok": True,
                 "data": {
                     "bale_configured": bale_is_configured(),
-                    "bot_username": str(getattr(settings, "BALE_BOT_USERNAME", "")),
+                    "bot_username": _bale_username(),
                     "linked": bool(phone) and bale_chat_for_phone(phone) is not None,
                 },
             }

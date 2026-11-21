@@ -573,3 +573,25 @@ def test_webhook_never_500s_when_bale_is_unconfigured(client: Any) -> None:
     body = response.json()
     assert body["ok"] is True
     assert body["replied"] is False
+
+
+@override_settings(BALE_BOT_TOKEN="test-token", BALE_BOT_USERNAME="")
+def test_status_falls_back_to_live_bot_username(client: Any) -> None:
+    """اگر نامِ کاربری در تنظیمات خالی باشد، از خودِ بله خوانده می‌شود.
+
+    چرا؟ نامِ اشتباه یعنی کاربر به رباتِ دیگری می‌رود و کدش هیچ‌وقت نمی‌آید؛
+    منبعِ حقیقت باید خودِ بله باشد، نه یک خط در `.env`.
+    """
+    with patch(
+        "apps.notifications.views.get_me", return_value={"ok": True, "username": "Kaveh185_bot"}
+    ):
+        res = client.get("/api/v1/notifications/bale/status/?phone_number=09121234567")
+    assert res.json()["data"]["bot_username"] == "Kaveh185_bot"
+
+
+@override_settings(BALE_BOT_TOKEN="", BALE_BOT_USERNAME="")
+def test_status_survives_unreachable_bale(client: Any) -> None:
+    """اگر بله در دسترس نبود، وضعیت باز هم پاسخ می‌دهد (بدونِ نامِ کاربری)."""
+    res = client.get("/api/v1/notifications/bale/status/?phone_number=09121234567")
+    assert res.status_code == 200
+    assert res.json()["data"]["bot_username"] == ""
