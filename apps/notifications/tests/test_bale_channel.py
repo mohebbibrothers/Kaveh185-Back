@@ -323,3 +323,119 @@ def test_webhook_ignores_payload_without_chat(client: Any) -> None:
     )
     assert res.status_code == 200
     assert res.json()["handled"] == "no_chat"
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  لایهٔ HTTPِ بله — بدونِ شبکه، با جایگزینِ `urlopen`
+#  این بخش مهم است چون تنها جایی است که توکن در URL می‌نشیند؛ هر خطایش
+#  می‌تواند توکن را در لاگ یا پیامِ خطا بیرون بدهد.
+# ══════════════════════════════════════════════════════════════════════════
+
+
+class _FakeResponse:
+    """پاسخِ جعلیِ urlopen با همان رفتارِ زمینه‌ای (`with`)."""
+
+    def __init__(self, body: str, status: int = 200) -> None:
+        self._body = body.encode("utf-8")
+        self.status = status
+
+    def read(self) -> bytes:
+        return self._body
+
+    def __enter__(self) -> _FakeResponse:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        return None
+
+
+def test_api_raises_when_token_missing(settings: Any) -> None:
+    """بدونِ توکن، خطای مشخص می‌دهد (نه تماسِ بی‌فایده به بله)."""
+    from apps.notifications.bale import BaleNotConfigured, _api
+
+    settings.BALE_BOT_TOKEN = ""
+    with pytest.raises(BaleNotConfigured):
+        _api("getMe")
+
+
+def test_api_returns_json_on_success(settings: Any) -> None:
+    """پاسخِ سالم به دیکشنری تبدیل می‌شود و URL همان مسیرِ رسمیِ بله است."""
+    from apps.notifications import bale
+
+    settings.BALE_BOT_TOKEN = "test-token"
+    settings.BALE_API_BASE = "https://tapi.bale.ai"
+    with patch.object(
+        bale.urllib_request,
+        "urlopen",
+        return_value=_FakeResponse('{"ok": true, "result": {"username": "k185"}}'),
+    ) as opener:
+        payload = bale._api("getMe")
+    assert payload["result"]["username"] == "k185"
+    assert "bot test-token" not in str(opener.call_args)
+
+
+def test_api_wraps_http_error_without_leaking_token(settings: Any) -> None:
+    """خطای HTTP به `BaleError` کوتاه تبدیل می‌شود و توکن در پیام نیست."""
+    from apps.notifications import bale
+
+    settings.BALE_BOT_TOKEN = "super-secret-token"
+    with (
+        patch.object(bale.urllib_request, "urlopen", return_value=_FakeResponse("{}", 401)),
+        pytest.raises(bale.BaleError) as exc,
+    ):
+        bale._api("sendMessage", {"chat_id": 1, "text": "x"})
+    assert "super-secret-token" not in str(exc.value)
+    assert "401" in str(exc.value)
+
+
+def test_api_wraps_network_error(settings: Any) -> None:
+    """قطعیِ شبکه ⇒ خطای خوانا با نوعِ خطا، نه استثنای خامِ urllib."""
+    from apps.notifications import bale
+
+    settings.BALE_BOT_TOKEN = "test-token"
+    with (
+        patch.object(bale.urllib_request, "urlopen", side_effect=TimeoutError("boom")),
+        pytest.raises(bale.BaleError) as exc,
+    ):
+        bale._api("getMe")
+    assert "TimeoutError" in str(exc.value)
+
+
+def test_api_rejects_unparsable_body(settings: Any) -> None:
+    """پاسخِ غیر-JSON (مثلاً صفحهٔ خطای میزبان) ⇒ خطای مشخص."""
+    from apps.notifications import bale
+
+    settings.BALE_BOT_TOKEN = "test-token"
+    with (
+        patch.object(bale.urllib_request, "urlopen", return_value=_FakeResponse("<html>")),
+        pytest.raises(bale.BaleError),
+    ):
+        bale._api("getMe")
+
+
+def test_send_bale_message_reports_failure_instead_of_raising(settings: Any) -> None:
+    """خطای درگاه به `BaleResult(ok=False)` تبدیل می‌شود؛ مسیرِ ثبت‌نام نمی‌شکند."""
+    from apps.notifications import bale
+
+    settings.BALE_BOT_TOKEN = "test-token"
+    with patch.object(bale.urllib_request, "urlopen", side_effect=OSError("down")):
+        result = bale.send_bale_message(123, "سلام")
+    assert result.ok is False
+    assert result.chat_id == 123
+    assert result.detail
+
+
+def test_get_me_extracts_username(settings: Any) -> None:
+    """`get_me` نامِ کاربریِ ربات را برمی‌گرداند (برای تستِ اتصال در استقرار)."""
+    from apps.notifications import bale
+
+    settings.BALE_BOT_TOKEN = "test-token"
+    with patch.object(
+        bale.urllib_request,
+        "urlopen",
+        return_value=_FakeResponse(
+            '{"ok": true, "result": {"username": "kaveh185_bot", "first_name": "کاوه"}}'
+        ),
+    ):
+        info = bale.get_me()
+    assert info == {"ok": True, "username": "kaveh185_bot", "name": "کاوه"}
