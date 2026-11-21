@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from django.conf import settings
@@ -19,7 +20,7 @@ from apps.core.outbox import relay_pending_outbox
 from apps.core.pagination import StandardLimitOffsetPagination
 from apps.core.responses import success_response
 
-from .bale import bale_is_configured, send_bale_message
+from .bale import BaleError, bale_is_configured, send_bale_message
 from .choices import SMSCategory
 from .selectors import get_sms_delivery_logs_queryset
 from .serializers import AdminSendTestSMSInputSerializer, SMSDeliveryLogSerializer
@@ -30,6 +31,8 @@ from .services import (
     remember_bale_chat,
     send_sms_message,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class AdminSMSDeliveryLogListAPIView(APIView):
@@ -106,6 +109,21 @@ class AdminFlushOutboxAPIView(APIView):
             data=stats,
             message="صف پیام‌های Outbox پردازش شد.",
         )
+
+
+def _safe_bale_reply(chat_id: int, text: str) -> bool:
+    """پاسخ به کاربر در بله — بدونِ آنکه خطا کلِ وب‌هوک را بشکند.
+
+    چرا مهم است؟ اگر توکن تنظیم نشده باشد یا بله قطع شود، پرتابِ استثنا
+    پاسخِ ۵۰۰ می‌دهد؛ بله آن را «تحویل نشد» می‌بیند و **همان آپدیت را
+    بی‌پایان دوباره می‌فرستد**. یک تنظیمِ جاافتاده نباید به حلقهٔ بی‌پایان
+    تبدیل شود. پس همیشه ۲۰۰ برمی‌گردانیم و فقط لاگ می‌گیریم.
+    """
+    try:
+        return send_bale_message(chat_id, text).ok
+    except BaleError as exc:
+        logger.warning("پاسخِ بله ارسال نشد (chat=%s): %s", chat_id, exc)
+        return False
 
 
 class BaleWebhookAPIView(APIView):
@@ -221,8 +239,8 @@ class BaleWebhookAPIView(APIView):
                 )
                 handled = "unknown"
 
-        send_bale_message(int(chat_id), reply)
-        return Response({"ok": True, "handled": handled})
+        delivered = _safe_bale_reply(int(chat_id), reply)
+        return Response({"ok": True, "handled": handled, "replied": delivered})
 
 
 class BaleChannelStatusAPIView(APIView):

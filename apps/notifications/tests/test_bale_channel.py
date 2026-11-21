@@ -530,7 +530,7 @@ def test_bale_check_sends_test_message_only_to_linked_number(settings: Any) -> N
     assert "به ربات وصل نیست" in out.getvalue()
 
 
-@override_settings(BALE_WEBHOOK_SECRET="s3cret")
+@override_settings(BALE_WEBHOOK_SECRET="s3cret", BALE_BOT_TOKEN="test-token")
 def test_webhook_accepts_bale_secret_header(client: Any) -> None:
     """بله کلید را در `X-Telegram-Bot-Api-Secret-Token` می‌فرستد، نه `X-Bale-Secret`.
 
@@ -554,3 +554,22 @@ def test_webhook_get_reports_health_without_leaking_secret(client: Any) -> None:
     body = response.json()
     assert body["secret_required"] is True
     assert "s3cret" not in str(body)
+
+
+@override_settings(BALE_BOT_TOKEN="", BALE_WEBHOOK_SECRET="")
+def test_webhook_never_500s_when_bale_is_unconfigured(client: Any) -> None:
+    """نبودِ توکن نباید وب‌هوک را ۵۰۰ کند.
+
+    چرا مهم است؟ بله پاسخِ غیرِ۲۰۰ را «تحویل نشد» می‌بیند و **همان آپدیت را
+    بی‌پایان دوباره می‌فرستد**؛ یک تنظیمِ جاافتاده نباید به حلقهٔ بی‌پایان
+    تبدیل شود. وب‌هوک همیشه ۲۰۰ می‌دهد و فقط `replied=false` را گزارش می‌کند.
+    """
+    response = client.post(
+        "/api/v1/notifications/bale/webhook/",
+        data={"message": {"chat": {"id": 77}, "text": "/start"}},
+        content_type="application/json",
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["replied"] is False
