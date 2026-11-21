@@ -148,7 +148,15 @@ mysql -u kavehir_k185app -p -e "SELECT @@character_set_database, @@collation_dat
   وب‌هوک در `apps/notifications/views.py::BaleWebhookAPIView` است و اگر
   `BALE_WEBHOOK_SECRET` تنظیم شده باشد، درخواست‌های بدونِ هدرِ درست را رد می‌کند.
 
-**۳) آزمونِ سریع**
+**۳) آزمونِ سریع — یک دستور، چهار سنجه**
+
+```bash
+python manage.py bale_check                        # توکن، پاسخِ بله، وب‌هوک/کران، کاربرانِ وصل‌شده
+python manage.py bale_check --send-to 09121234567  # + یک پیامِ آزمایشی به شمارهٔ وصل‌شده
+```
+
+اگر چیزی کم باشد، همین دستور صریح می‌گوید چه کاری لازم است؛ لازم نیست
+جایی لاگ را بخوانید.
 
 ```bash
 python manage.py bale_inbox --dry-run --verbose   # چه پیام‌هایی در صف است؟

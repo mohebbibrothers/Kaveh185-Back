@@ -439,3 +439,92 @@ def test_get_me_extracts_username(settings: Any) -> None:
     ):
         info = bale.get_me()
     assert info == {"ok": True, "username": "kaveh185_bot", "name": "کاوه"}
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  `bale_check` — بازرسیِ آمادگیِ کانال پیش از اعلامِ عمومی
+# ══════════════════════════════════════════════════════════════════════════
+
+
+def _run_check(settings: Any, *, me: dict | None = None, webhook: str = "") -> str:
+    """اجرای `bale_check` با پاسخ‌های جعلیِ بله و برگرداندنِ متنِ گزارش."""
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    settings.BALE_BOT_TOKEN = "test-token"
+    settings.BALE_BOT_USERNAME = "Kaveh185_bot"
+
+    def fake_api(method: str, payload: object = None, **_: object) -> dict:
+        if method == "getMe":
+            return {"ok": True, "result": me or {"username": "Kaveh185_bot", "first_name": "کاوه"}}
+        if method == "getWebhookInfo":
+            return {"ok": True, "result": {"url": webhook}}
+        return {"ok": True, "result": {}}
+
+    out = StringIO()
+    with (
+        patch("apps.notifications.bale._api", side_effect=fake_api),
+        patch(
+            "apps.notifications.bale.get_me",
+            side_effect=lambda: {
+                "ok": True,
+                "username": (me or {}).get("username", "Kaveh185_bot"),
+                "name": (me or {}).get("first_name", "کاوه"),
+            },
+        ),
+    ):
+        call_command("bale_check", stdout=out)
+    return out.getvalue()
+
+
+def test_bale_check_flags_missing_webhook_and_secret(settings: Any) -> None:
+    """بدونِ وب‌هوک و کلید، گزارش باید صریح بگوید چه چیزی کم است."""
+    settings.BALE_WEBHOOK_SECRET = ""
+    text = _run_check(settings)
+    assert "وب‌هوک تنظیم نشده" in text
+    assert "BALE_WEBHOOK_SECRET" in text
+    assert "هنوز آماده نیست" in text
+
+
+def test_bale_check_flags_username_mismatch(settings: Any) -> None:
+    """اگر نامِ کاربریِ ربات با تنظیمات یکی نباشد، پیوندِ فرم اشتباه می‌شود."""
+    settings.BALE_WEBHOOK_SECRET = "s3cret"
+    text = _run_check(
+        settings, me={"username": "kaveh_new_bot", "first_name": "کاوه"}, webhook="https://x/y"
+    )
+    assert "یکی نیست" in text
+
+
+def test_bale_check_reports_ready_when_all_green(settings: Any) -> None:
+    """وقتی توکن، وب‌هوک، کلید و یک کاربرِ وصل‌شده هست، جمع‌بندی مثبت است."""
+    settings.BALE_WEBHOOK_SECRET = "s3cret"
+    user = _make_participant(seq=930)
+    BaleSubscriber.objects.create(phone_number=user.phone_number, chat_id=555)
+    text = _run_check(
+        settings, webhook="https://api.kaveh185.ir/api/v1/notifications/bale/webhook/"
+    )
+    assert "همه‌چیز آماده است" in text
+
+
+def test_bale_check_sends_test_message_only_to_linked_number(settings: Any) -> None:
+    """پیامِ آزمایشی برای شمارهٔ وصل‌نشده ارسال نمی‌شود و راهنمایی می‌دهد."""
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    settings.BALE_BOT_TOKEN = "test-token"
+    settings.BALE_WEBHOOK_SECRET = "s3cret"
+    out = StringIO()
+    with (
+        patch(
+            "apps.notifications.bale._api",
+            return_value={"ok": True, "result": {"username": "Kaveh185_bot", "url": "https://x"}},
+        ),
+        patch(
+            "apps.notifications.bale.get_me",
+            return_value={"ok": True, "username": "Kaveh185_bot", "name": "کاوه"},
+        ),
+    ):
+        call_command("bale_check", "--send-to", "09120000000", stdout=out)
+    assert "به ربات وصل نیست" in out.getvalue()
