@@ -849,3 +849,60 @@ def test_bale_check_ping_without_webhook_says_where_the_message_is(settings: Any
     """با `--ping-webhook` و بدونِ وب‌هوک، پیام در صفِ getUpdates است — همان را می‌گوید."""
     text = _run_check2(settings, {"url": "", "pending_update_count": 1}, "--ping-webhook")
     assert "صفِ `getUpdates`" in text
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  منطقِ مشترکِ پیامِ ورودی (وب‌هوک و `bale_inbox` یک رفتار دارند)
+# ══════════════════════════════════════════════════════════════════════════
+
+
+@override_settings(BALE_BOT_TOKEN="test-token")
+def test_start_command_explains_next_step_instead_of_dead_end() -> None:
+    """`/start` باید بگوید «از سامانه کدِ اتصال بگیرید»، نه فقط خوش‌آمد.
+
+    پیامِ مبهم یعنی کاربر همان‌جا می‌ماند و ثبت‌نام را رها می‌کند؛ این متن
+    کوتاه‌ترین مسیر تا گامِ دوم را می‌گوید.
+    """
+    from apps.notifications.views import process_bale_message
+
+    result = process_bale_message(chat={"id": 1}, text="/start")
+    assert result["handled"] == "start"
+    assert "کدِ اتصال" in result["reply"]
+    assert "09121234567" in result["reply"]
+
+
+@override_settings(BALE_BOT_TOKEN="test-token", BALE_BOT_USERNAME="kaveh185_bot")
+def test_start_with_code_links_in_one_message() -> None:
+    """`/start A7K2QF` هم مثلِ فرستادنِ کدِ خالی کار می‌کند.
+
+    کاربر چیزی که کپی کرده را کنارِ دستورِ شروع می‌چسباند؛ اگر این را
+    «دستورِ نامفهوم» بشماریم، اتصال برقرار نمی‌شود و کد هیچ‌وقت نمی‌آید.
+    """
+    from apps.notifications.views import process_bale_message
+    from conftest import create_test_participant as _mk
+
+    user = _mk(seq=940)
+    code = issue_bale_code(phone_number=user.phone_number)["code"]
+    result = process_bale_message(chat={"id": 4242}, text=f"/start {code}")
+    assert result["handled"] == "linked"
+    assert BaleSubscriber.objects.get(phone_number=user.phone_number).chat_id == 4242
+
+
+@override_settings(BALE_BOT_TOKEN="test-token", BALE_BOT_USERNAME="kaveh185_bot")
+def test_linking_with_active_challenge_triggers_fresh_code() -> None:
+    """اگر چالشِ فعالی برای شماره باشد، بعد از اتصال یک کدِ تازه هم می‌رود.
+
+    چرا؟ کاربر معمولاً کد ارسال را زودتر زده و ممکن است صفحه را رفرش کرده
+    باشد؛ فرستادنِ کدِ تازه در همان لحظه، یک رفت‌وبرگشتِ کامل را حذف می‌کند.
+    """
+    from apps.authentication.services import create_and_send_otp
+    from apps.notifications.views import process_bale_message
+    from conftest import create_test_participant as _mk
+
+    user = _mk(seq=941, is_phone_verified=False)
+    create_and_send_otp(phone_number=user.phone_number)
+    code = issue_bale_code(phone_number=user.phone_number)["code"]
+
+    result = process_bale_message(chat={"id": 5555}, text=code)
+    assert result["handled"] == "linked"
+    assert result.get("resend_otp_for") == user.phone_number

@@ -284,6 +284,46 @@ def issue_bale_code(*, phone_number: str) -> dict[str, Any]:
     }
 
 
+def active_otp_challenge_for_phone(phone_number: str) -> tuple[str, str]:
+    """آخرین چالشِ تأییدِ فعالِ یک شماره (تا کد از راهِ بله دوباره فرستاده شود)."""
+    from apps.authentication.models import OTPChallenge
+
+    row = (
+        OTPChallenge.objects.filter(phone_number=phone_number, is_verified=False)
+        .order_by("-created_at", "-id")
+        .first()
+    )
+    if row is None:
+        return "", ""
+    return str(row.id), str(row.purpose)
+
+
+def otp_minutes_left(challenge_id: str) -> int:
+    """چند دقیقه از عمرِ چالش مانده (برای متنِ کاربر)."""
+    from apps.authentication.models import OTPChallenge
+
+    try:
+        row = OTPChallenge.objects.filter(pk=int(challenge_id)).first()
+    except (TypeError, ValueError):
+        return 0
+    if row is None:
+        return 0
+    left = (row.expires_at - timezone.now()).total_seconds()
+    return max(0, int(left // 60))
+
+
+def prepare_otp_text(*, phone_number: str, code: str, purpose: str = "") -> str:
+    """متنِ کدِ تأیید؛ اگر کاربر عجله داشت، کوتاه‌ترین راه را هم می‌گوید."""
+    del purpose
+    return (
+        "کدِ تأییدِ سامانهٔ مسابقهٔ کتاب‌خوانی هفتهٔ بسیج (حوزهٔ ۱۸۵ شهید کاوه)\n\n"
+        f"{code}\n\n"
+        "این کد را در اختیارِ دیگران نگذارید. اگر شما درخواست نداده‌اید، همین پیام را "
+        "نادیده بگیرید.\n\n"
+        "اگر دیر شده و کد منقضی شده، در همان صفحهٔ ثبت‌نام «ارسال دوبارهٔ کد» را بزنید."
+    )
+
+
 def consume_bale_code(*, raw_text: str, chat: dict[str, Any]) -> dict[str, Any]:
     """اگر متنِ کاربر کدِ اتصال بود، شماره را به این گفتگو وصل می‌کند.
 

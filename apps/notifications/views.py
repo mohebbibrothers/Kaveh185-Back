@@ -25,6 +25,7 @@ from .choices import SMSCategory
 from .selectors import get_sms_delivery_logs_queryset
 from .serializers import AdminSendTestSMSInputSerializer, SMSDeliveryLogSerializer
 from .services import (
+    active_otp_challenge_for_phone,
     bale_chat_for_phone,
     consume_bale_code,
     normalize_bale_phone,
@@ -109,6 +110,109 @@ class AdminFlushOutboxAPIView(APIView):
             data=stats,
             message="صف پیام‌های Outbox پردازش شد.",
         )
+
+
+def _resend_otp_via_bale(*, phone_number: str, chat_id: int) -> bool:
+    """کدِ چالشِ فعال را برای کاربر به بله می‌فرستد.
+
+    ⚠️ محدودیتِ صادقانه: کد فقط به‌صورتِ هش ذخیره می‌شود و بازیابی‌شدنی نیست.
+    پس این تابع یک کدِ **تازه** برای همان شماره می‌سازد (چالشِ قبلی باطل
+    می‌شود) و همان را می‌فرستد؛ کاربر کدی که در صفحه دیده را باید همان‌جا وارد
+    کند یا «ارسال دوباره» را بزند. اگر ساختِ کد ممکن نبود، False.
+    """
+    from apps.authentication.services import create_and_send_otp
+
+    del chat_id  # ارسال از مسیرِ لینکِ ثبت‌شده انجام می‌شود
+    try:
+        create_and_send_otp(phone_number=phone_number)
+    except Exception:  # pragma: no cover - مسیرِ جانبی نباید وب‌هوک را بشکند
+        logger.warning("ارسالِ کدِ تازه از بله ناموفق بود (phone=%s)", phone_number)
+        return False
+    return True
+
+
+def process_bale_message(
+    *, chat: dict[str, Any], text: str, sender: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """پردازشِ یک پیامِ ورودیِ بله و تولیدِ پاسخ.
+
+    ⚠️ این تابع تنها منبعِ حقیقت است: هم وب‌هوک و هم دستورِ `bale_inbox` همین
+    را صدا می‌زنند. اگر منطق دو جا تکرار شده بود، یک روز وب‌هوک چیزی می‌گفت و
+    مسیرِ کران چیزِ دیگری — و همان تفاوت، کاربر را در گامِ ثبت‌نام گم می‌کند.
+    """
+    sender = sender or {}
+    chat_id = chat.get("id")
+
+    # «/start» با پارامتر (مثلِ `/start A7K2QF`) هم باید مثلِ کد رفتار کند:
+    # کاربر به‌طور طبیعی چیزی که کپی کرده را کنارِ دستورِ شروع می‌چسباند.
+    raw = str(text or "").strip()
+    if raw.lower().startswith("/start") and len(raw) > 6:
+        candidate = raw[6:].strip()
+        if candidate:
+            raw = candidate
+
+    linked = consume_bale_code(raw_text=raw, chat=chat)
+    if linked.get("matched"):
+        phone = str(linked.get("phone_number") or "")
+        # اگر کدی برای همین شماره فعال است، همان لحظه از بله می‌فرستیم تا
+        # کاربر لازم نباشد «ارسال دوباره» را بزند یا صفحه را رفرش کند.
+        challenge_id, purpose = active_otp_challenge_for_phone(phone)
+        if challenge_id:
+            reply = (
+                "اتصال برقرار شد ✅\n"
+                "کدِ تأییدِ شما در پیامِ بعدی همین گفتگو می‌آید.\n"
+                "(اگر دیر شده و کد منقضی شد، در صفحهٔ ثبت‌نام «ارسال دوبارهٔ کد» را بزنید.)"
+            )
+            return {"handled": "linked", "reply": reply, "resend_otp_for": phone}
+        del purpose
+        return {
+            "handled": "linked",
+            "reply": (
+                "اتصال برقرار شد ✅\n"
+                "از این پس پیام‌ها و کدهای تأییدِ سامانه در همین گفتگو می‌آید.\n"
+                "به سامانه برگردید و «ارسال دوبارهٔ کد» را بزنید."
+            ),
+        }
+
+    phone = normalize_bale_phone(raw)
+    if phone:
+        remember_bale_chat(
+            chat_id=int(chat_id or 0),
+            phone_number=phone,
+            first_name=str(sender.get("first_name") or ""),
+            username=str(sender.get("username") or ""),
+        )
+        return {
+            "handled": "phone",
+            "reply": (
+                "شمارهٔ شما ثبت شد ✅\n"
+                "حالا به سامانه برگردید. اگر سامانه کدی برای اتصال نشان می‌دهد، "
+                "همان کد را همین‌جا بفرستید."
+            ),
+        }
+
+    if raw.startswith("/start"):
+        return {
+            "handled": "start",
+            "reply": (
+                "سلام 👋\n"
+                "این رباتِ مسابقهٔ کتاب‌خوانی حوزهٔ ۱۸۵ شهید کاوه است.\n\n"
+                "لطفاً همان‌جا در سامانه ثبت‌نام کنید؛ در گامِ دوم یک «کدِ اتصال» "
+                "(مثلِ A7K2QF) به شما نشان داده می‌شود — همان را همین‌جا بفرستید "
+                "تا کدِ تأیید در بله برایتان بیاید.\n\n"
+                "اگر سامانه در دسترس نیست، می‌توانید شمارهٔ همراه خود را به شکلِ "
+                "09121234567 بفرستید."
+            ),
+        }
+
+    return {
+        "handled": "unknown",
+        "reply": (
+            "سلام 👋\n"
+            "برای اتصال، کدی که سامانه نشان می‌دهد را بفرستید (مثلِ A7K2QF) — "
+            "یا شمارهٔ همراه خود را به شکلِ 09121234567."
+        ),
+    }
 
 
 def _safe_bale_reply(chat_id: int, text: str) -> bool:
@@ -210,53 +314,23 @@ class BaleWebhookAPIView(APIView):
         payload = request.data if isinstance(request.data, dict) else {}
         message = payload.get("message") or {}
         chat = message.get("chat") or {}
-        chat_id = chat.get("id")
-        if chat_id is None:
+        if chat.get("id") is None:
             return Response({"ok": True, "handled": "no_chat"})
 
-        text = str(message.get("text") or "").strip()
-        sender = message.get("from") or {}
+        result = process_bale_message(
+            chat=chat,
+            text=str(message.get("text") or ""),
+            sender=message.get("from") or {},
+        )
+        chat_id = int(chat["id"])
 
-        linked = consume_bale_code(raw_text=text, chat=chat)
-        if linked.get("matched"):
-            reply = (
-                "اتصال برقرار شد ✅\n"
-                "از این پس پیام‌ها و کدهای تأییدِ سامانه در همین گفتگو می‌آید.\n"
-                "به سامانه برگردید و ادامه دهید."
-            )
-            handled = "linked"
-        else:
-            phone = normalize_bale_phone(text)
-            if phone:
-                remember_bale_chat(
-                    chat_id=int(chat_id),
-                    phone_number=phone,
-                    first_name=str(sender.get("first_name") or ""),
-                    username=str(sender.get("username") or ""),
-                )
-                reply = (
-                    "شمارهٔ شما ثبت شد ✅\n"
-                    "حالا به سامانه برگردید. اگر سامانه کدی برای اتصال نشان می‌دهد، "
-                    "همان کد را همین‌جا بفرستید."
-                )
-                handled = "phone"
-            elif text.startswith("/start"):
-                reply = (
-                    "سلام 👋\n"
-                    "این رباتِ مسابقهٔ کتاب‌خوانی حوزهٔ ۱۸۵ شهید کاوه است.\n\n"
-                    "برای اتصال، کدی که سامانه نشان می‌دهد را همین‌جا بفرستید — "
-                    "یا شمارهٔ همراه خود را به شکلِ 09121234567."
-                )
-                handled = "start"
-            else:
-                reply = (
-                    "کدِ اتصال یا شمارهٔ همراه را بفرستید.\n"
-                    "کدِ اتصال را از صفحهٔ ثبت‌نامِ سامانه بردارید (مثلِ A7K2QF)."
-                )
-                handled = "unknown"
+        # اگر کدِ اتصال تازه وصل شد و چالشِ فعالی داشت، همان کد را همین حالا بفرست
+        resend_for = str(result.get("resend_otp_for") or "")
+        if resend_for:
+            _resend_otp_via_bale(phone_number=resend_for, chat_id=chat_id)
 
-        delivered = _safe_bale_reply(int(chat_id), reply)
-        return Response({"ok": True, "handled": handled, "replied": delivered})
+        delivered = _safe_bale_reply(chat_id, str(result["reply"]))
+        return Response({"ok": True, "handled": result["handled"], "replied": delivered})
 
 
 class BaleChannelStatusAPIView(APIView):

@@ -25,25 +25,9 @@ from typing import Any
 from django.core.management.base import BaseCommand, CommandError, CommandParser
 
 from apps.notifications.bale import BaleError, _api, bale_is_configured, send_bale_message
-from apps.notifications.services import normalize_bale_phone, remember_bale_chat
+from apps.notifications.views import process_bale_message
 
 OFFSET_FILE = Path("tmp") / "bale-offset.json"
-
-WELCOME = (
-    "سلام 👋\n"
-    "به رباتِ مسابقهٔ کتاب‌خوانی هفتهٔ بسیج (حوزهٔ ۱۸۵ شهید کاوه) خوش آمدید.\n\n"
-    "برای دریافتِ کدِ تأیید در سامانه، شمارهٔ همراه خود را همین‌جا بفرستید — "
-    "مثلاً: 09121234567"
-)
-THANKS = (
-    "ثبت شد ✅\n"
-    "از این پس کدِ تأییدِ شما همین‌جا در بله ارسال می‌شود. "
-    "حالا به سامانه برگردید و کد را وارد کنید."
-)
-NOT_A_PHONE = (
-    "شمارهٔ همراه را به شکلِ 09121234567 بفرستید (بدونِ فاصله). "
-    "اگر مطمئنید درست فرستاده‌اید، با پشتیبانیِ حوزه تماس بگیرید."
-)
 
 
 class Command(BaseCommand):
@@ -100,23 +84,19 @@ class Command(BaseCommand):
             if chat_id is None:
                 continue
 
-            phone = normalize_bale_phone(text)
             if options["verbose"]:
                 self.stdout.write(f"update={last_update_id} chat={chat_id} text={text[:40]!r}")
 
-            if phone:
-                remember_bale_chat(
-                    chat_id=int(chat_id),
-                    phone_number=phone,
-                    first_name=str(sender.get("first_name") or ""),
-                    username=str(sender.get("username") or ""),
-                )
-                reply = THANKS
+            # ⚠️ همان تابعی که وب‌هوک استفاده می‌کند — دو نسخهٔ جدا یعنی یک روز
+            # دو رفتارِ متفاوت برای یک پیام و گم‌شدنِ کاربر در گامِ ثبت‌نام.
+            result = process_bale_message(
+                chat={"id": int(chat_id), **{k: v for k, v in chat.items() if k != "id"}},
+                text=text,
+                sender=sender,
+            )
+            reply = str(result["reply"])
+            if result.get("handled") in {"phone", "linked"}:
                 handled += 1
-            elif text.startswith("/start"):
-                reply = WELCOME
-            else:
-                reply = NOT_A_PHONE
 
             if not options["dry_run"]:
                 send_bale_message(int(chat_id), reply)

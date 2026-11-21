@@ -240,3 +240,35 @@ cd ~/Kaveh185-Back && ~/virtualenv/Kaveh185-Back/3.12/bin/python manage.py bale_
 
 سپس خطِ `bale_inbox` را در کران هر دقیقه اجرا کنید (فایل
 [`deploy/cpanel/cron_jobs.txt`](../deploy/cpanel/cron_jobs.txt)).
+
+
+## ۷. چرا `www` برای وب‌هوک اشتباه است؟
+
+`bale_webhook` نشانی را از `ALLOWED_HOSTS` می‌سازد. اگر ترتیبِ دامنه‌ها
+`kaveh185.ir, www.kaveh185.ir` باشد و `api.` وجود نداشته باشد، دستور
+**اولین دامنه** را برمی‌دارد و نتیجه می‌شود:
+
+```
+✗ https://www.kaveh185.ir/api/v1/…      ← اشتباه
+✓ https://api.kaveh185.ir/api/v1/…      ← درست
+```
+
+نشانه‌اش این است: `setWebhook` می‌گوید `Webhook was set` و آپدیت‌ها هم صفر
+می‌مانند، ولی ربات هیچ پاسخی نمی‌دهد. راهِ قطعی، صریح گفتنِ نشانی است:
+
+```bash
+# در .env (بهتر است یک‌بار برای همیشه):
+BALE_WEBHOOK_URL=https://api.kaveh185.ir/api/v1/notifications/bale/webhook/
+
+# یا دستی:
+python manage.py bale_webhook --url https://api.kaveh185.ir/api/v1/notifications/bale/webhook/
+```
+
+برای اطمینان، این نشانی باید در مرورگر همین پاسخ را بدهد (نه ۴۰۴):
+
+```json
+{"ok": true, "service": "kaveh185-bale-webhook", "configured": true, "secret_required": true}
+```
+
+اگر پاسخِ بالا نیامد، وب‌هوک را بردارید و از کران استفاده کنید:
+`bale_webhook --delete` و سپس خطِ `bale_inbox` هر دقیقه.
