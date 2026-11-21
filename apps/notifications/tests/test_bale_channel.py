@@ -528,3 +528,29 @@ def test_bale_check_sends_test_message_only_to_linked_number(settings: Any) -> N
     ):
         call_command("bale_check", "--send-to", "09120000000", stdout=out)
     assert "به ربات وصل نیست" in out.getvalue()
+
+
+@override_settings(BALE_WEBHOOK_SECRET="s3cret")
+def test_webhook_accepts_bale_secret_header(client: Any) -> None:
+    """بله کلید را در `X-Telegram-Bot-Api-Secret-Token` می‌فرستد، نه `X-Bale-Secret`.
+
+    اگر فقط هدرِ دومی پذیرفته شود، کلید عملاً بی‌اثر است و وب‌هوک برای همه باز
+    می‌ماند — یعنی هر کسی می‌تواند گفتگوی خودش را به شمارهٔ دلخواه بچسباند.
+    """
+    response = client.post(
+        "/api/v1/notifications/bale/webhook/",
+        data={"message": {"chat": {"id": 12}, "text": "سلام"}},
+        content_type="application/json",
+        headers={"X-Telegram-Bot-Api-Secret-Token": "s3cret"},
+    )
+    assert response.status_code == 200
+
+
+@override_settings(BALE_BOT_TOKEN="test-token", BALE_WEBHOOK_SECRET="s3cret")
+def test_webhook_get_reports_health_without_leaking_secret(client: Any) -> None:
+    """`GET` سلامت را می‌گوید (برای setWebhook) و هرگز خودِ کلید را برنمی‌گرداند."""
+    response = client.get("/api/v1/notifications/bale/webhook/")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["secret_required"] is True
+    assert "s3cret" not in str(body)

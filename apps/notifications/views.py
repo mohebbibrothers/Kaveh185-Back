@@ -123,17 +123,58 @@ class BaleWebhookAPIView(APIView):
 
     @extend_schema(
         tags=["Notifications & Bale"],
+        summary="بازرسی دسترس‌پذیری وب‌هوک بله (برای setWebhook)",
+        request=None,
+        responses={200: OpenApiTypes.OBJECT},
+    )
+    def get(self, request: Request) -> Response:
+        """پاسخِ سلامت — بله در پاسخِ `setWebhook` وضعیتِ این نشانی را گزارش می‌کند.
+
+        چرا GET لازم است؟ بعضی میزبان‌ها پیش از ثبتِ وب‌هوک یک درخواستِ ساده
+        می‌زنند و اگر ۴۰۵ بگیرند، ثبت را رد می‌کنند. هم‌چنین این پاسخ نشان
+        می‌دهد که مسیر واقعاً به اپلیکیشنِ درست وصل است.
+        """
+        return Response(
+            {
+                "ok": True,
+                "service": "kaveh185-bale-webhook",
+                "configured": bale_is_configured(),
+                "secret_required": bool(str(getattr(settings, "BALE_WEBHOOK_SECRET", "") or "")),
+            }
+        )
+
+    def _authorized(self, request: Request) -> bool:
+        """آیا درخواست از بله آمده است؟
+
+        بله هدرِ `X-Bale-Secret` را **نمی‌فرستد**؛ آنچه می‌فرستد هدرِ
+        `X-Telegram-Bot-Api-Secret-Token` است (همان `secret_token`ی که در
+        `setWebhook` می‌دهیم). اگر فقط اولی را می‌پذیرفتیم، کلید بی‌اثر
+        می‌شد و وب‌هوک برای همه باز می‌ماند — یعنی هر کسی می‌توانست
+        گفتگوی خودش را به شمارهٔ دلخواه بچسباند. هر دو هدر پذیرفته می‌شوند
+        تا با هر دو سبکِ مستندسازی سازگار باشد.
+        """
+        expected = str(getattr(settings, "BALE_WEBHOOK_SECRET", "") or "")
+        if not expected:
+            return True
+        provided = {
+            request.headers.get("X-Bale-Secret", ""),
+            request.headers.get("X-Telegram-Bot-Api-Secret-Token", ""),
+        }
+        return expected in provided
+
+    @extend_schema(
+        tags=["Notifications & Bale"],
         summary="وب‌هوک دریافت آپدیت‌های ربات بله (تنظیم‌شده با secret)",
         request=None,
         responses={200: OpenApiTypes.OBJECT},
     )
     def post(self, request: Request) -> Response:
         """پردازشِ یک آپدیت: ثبتِ شماره، مصرفِ کدِ اتصال، یا پاسخِ راهنما."""
-        expected = str(getattr(settings, "BALE_WEBHOOK_SECRET", "") or "")
-        if expected and request.headers.get("X-Bale-Secret", "") != expected:
+        if not self._authorized(request):
             return Response({"ok": False}, status=status.HTTP_403_FORBIDDEN)
 
-        message = (request.data or {}).get("message") or {}
+        payload = request.data if isinstance(request.data, dict) else {}
+        message = payload.get("message") or {}
         chat = message.get("chat") or {}
         chat_id = chat.get("id")
         if chat_id is None:
