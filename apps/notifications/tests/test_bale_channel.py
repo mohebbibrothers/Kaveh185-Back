@@ -966,3 +966,32 @@ def test_webhook_self_test_rejects_foreign_200(settings: Any) -> None:
     cmd = Command()
     with patch("urllib.request.urlopen", return_value=_Resp()):
         assert cmd._self_test("https://kaveh185.ir/x/") is False
+
+
+def test_bale_inbox_refuses_to_race_with_active_webhook(
+    settings: Any, tmp_path: Any, monkeypatch: Any
+) -> None:
+    """با وب‌هوکِ فعال، `bale_inbox` باید توضیح بدهد، نه اینکه ساکت چیزی نخواند.
+
+    بله آپدیت‌ها را به وب‌هوک تحویل می‌دهد و `getUpdates` خالی می‌ماند؛ کاربر
+    از خروجیِ خالی نتیجه می‌گیرد «ربات خراب است».
+    """
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    from apps.notifications.management.commands import bale_inbox as inbox_module
+
+    settings.BALE_BOT_TOKEN = "test-token"
+    monkeypatch.setattr(inbox_module, "OFFSET_FILE", tmp_path / "offset.json")
+    out = StringIO()
+    with (
+        patch(
+            "apps.notifications.management.commands.bale_inbox._api",
+            return_value={"ok": True, "result": {"url": "https://api.kaveh185.ir/x"}},
+        ),
+        patch("apps.notifications.management.commands.bale_inbox.send_bale_message") as sender,
+    ):
+        call_command("bale_inbox", stdout=out)
+    assert "وب‌هوک فعال است" in out.getvalue()
+    sender.assert_not_called()

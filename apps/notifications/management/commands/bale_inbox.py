@@ -58,6 +58,20 @@ class Command(BaseCommand):
                 "و در .env بگذار."
             )
 
+        # ⚠️ وقتی وب‌هوک فعال است، بله آپدیت‌ها را به آن تحویل می‌دهد و
+        # `getUpdates` خالی می‌ماند. اگر این را نگوییم، کاربر فکر می‌کند ربات
+        # خراب است، در حالی که دو مسیر با هم رقابت می‌کنند.
+        webhook_url = self._active_webhook()
+        if webhook_url:
+            self.stdout.write(
+                self.style.WARNING(
+                    f"وب‌هوک فعال است ({webhook_url}) ⇒ آپدیت‌ها همان‌جا تحویل می‌شوند و این "
+                    "دستور چیزی نمی‌بیند. برای استفاده از کران: "
+                    "`manage.py bale_webhook --delete`."
+                )
+            )
+            return
+
         OFFSET_FILE.parent.mkdir(parents=True, exist_ok=True)
         offset = 0 if options["reset_offset"] else self._read_offset()
 
@@ -112,6 +126,17 @@ class Command(BaseCommand):
         )
         if options["dry_run"]:
             self.stdout.write(self.style.WARNING("حالتِ آزمایشی: هیچ پاسخی ارسال نشد."))
+
+    @staticmethod
+    def _active_webhook() -> str:
+        """نشانیِ وب‌هوکِ فعال در بله (اگر بود)."""
+        try:
+            info = _api("getWebhookInfo").get("result") or {}
+        except BaleError:
+            return ""
+        if not isinstance(info, dict):
+            return ""
+        return str(info.get("url") or "")
 
     @staticmethod
     def _read_offset() -> int:

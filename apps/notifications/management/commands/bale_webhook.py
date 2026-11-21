@@ -136,7 +136,9 @@ class Command(BaseCommand):
 
         probe = url.rstrip("/") + "/"
         try:
-            with urllib.request.urlopen(probe, timeout=8) as resp:  # noqa: S310
+            # آدرس از تنظیماتِ خودمان می‌آید و با https اجباری می‌شود:
+            # `_self_test` فقط نشانیِ ساخته‌شده توسطِ همین دستور را می‌زند.
+            with urllib.request.urlopen(probe, timeout=8) as resp:  # noqa: S310  # nosec B310
                 body = resp.read(400).decode("utf-8", errors="replace")
                 status = resp.status
         except urllib.error.HTTPError as exc:
