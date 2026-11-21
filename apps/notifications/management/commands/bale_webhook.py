@@ -69,6 +69,10 @@ class Command(BaseCommand):
         if not bale_is_configured():
             raise CommandError("BALE_BOT_TOKEN تنظیم نشده است؛ اول ربات را در `.env` بگذارید.")
 
+        if options.get("probe"):
+            self._loopback_test(url)
+            return
+
         if options["show"]:
             self._show()
             return
@@ -125,6 +129,59 @@ class Command(BaseCommand):
             )
 
     # ── کمکی‌ها ────────────────────────────────────────────────────────────
+    def _loopback_test(self, url: str) -> None:
+        """آزمونِ حلقه‌ای: همان درخواستی که بله می‌فرستد، از خودمان به خودمان.
+
+        چرا؟ GETِ سلامت فقط می‌گوید «مسیر باز است». آنچه واقعاً باید کار کند
+        این است: یک POST با هدرِ کلید، که ۲۰۰ و `ok: true` برگرداند. اگر کلید
+        جابه‌جا باشد یا middleware درخواست را رد کند، همین‌جا لو می‌رود — نه
+        وقتی کاربر واقعی `/start` می‌زند و هیچ پاسخی نمی‌گیرد.
+        """
+        import json
+        import urllib.error
+        import urllib.request
+
+        secret = str(getattr(settings, "BALE_WEBHOOK_SECRET", "") or "")
+        body = json.dumps(
+            {
+                "_probe": True,
+                "message": {
+                    "message_id": 1,
+                    "chat": {"id": 1, "first_name": "آزمون"},
+                    "from": {"first_name": "آزمون"},
+                    "text": "/start",
+                },
+            }
+        ).encode("utf-8")
+        headers = {"Content-Type": "application/json"}
+        if secret:
+            headers["X-Telegram-Bot-Api-Secret-Token"] = secret
+        request_ = urllib.request.Request(  # noqa: S310
+            url, data=body, headers=headers, method="POST"
+        )
+        try:
+            with urllib.request.urlopen(request_, timeout=10) as resp:  # noqa: S310  # nosec B310
+                raw = resp.read(600).decode("utf-8", errors="replace")
+                code = resp.status
+        except urllib.error.HTTPError as exc:
+            hint = (
+                " (کلیدِ وب‌هوک در `.env` با آنچه در بله ثبت شده یکی نیست)" if exc.code == 403 else ""
+            )
+            self._line(False, f"آزمونِ حلقه‌ای: پاسخ {exc.code}{hint}")
+            return
+        except Exception as exc:  # pragma: no cover - شبکهٔ بیرونی
+            self._line(False, f"آزمونِ حلقه‌ای انجام نشد ({type(exc).__name__}).")
+            return
+
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            payload = {}
+        if code == 200 and payload.get("ok") is True:
+            self._line(True, f"آزمونِ حلقه‌ای سالم است (handled={payload.get('handled')}).")
+        else:
+            self._line(False, f"آزمونِ حلقه‌ای پاسخِ نامنتظر داد ({code}): {raw[:120]}")
+
     def _self_test(self, url: str) -> bool:
         """آزمونِ خودکارِ وب‌هوک: آیا نشانی از بیرون واقعاً پاسخ می‌دهد؟
 

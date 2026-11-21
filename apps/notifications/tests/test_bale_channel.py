@@ -1031,3 +1031,39 @@ def test_bale_check_fix_re_registers_broken_webhook(settings: Any) -> None:
 
     assert "setWebhook" in calls  # دوباره ثبت شد
     assert "ترمیم" in out.getvalue() or "ثبتِ دوباره" in out.getvalue()
+
+
+@override_settings(BALE_WEBHOOK_SECRET="s3cret", BALE_BOT_TOKEN="test-token")
+def test_probe_webhook_call_does_not_message_anyone(client: Any) -> None:
+    """آزمونِ حلقه‌ای همان مسیرِ واقعی را می‌زند ولی به هیچ گفتگویی پیام نمی‌دهد."""
+    with patch("apps.notifications.views.send_bale_message") as sender:
+        res = client.post(
+            "/api/v1/notifications/bale/webhook/",
+            data={"_probe": True, "message": {"chat": {"id": 1}, "text": "/start"}},
+            content_type="application/json",
+            headers={"X-Telegram-Bot-Api-Secret-Token": "s3cret"},
+        )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["ok"] is True
+    assert body["handled"] == "start"
+    assert body["replied"] is None
+    sender.assert_not_called()
+
+
+def test_loopback_test_reports_mismatched_secret(settings: Any) -> None:
+    """اگر کلید جابه‌جا باشد، همان‌جا ۴۰۳ تشخیص داده می‌شود."""
+    import urllib.error
+
+    from apps.notifications.management.commands.bale_webhook import Command
+
+    settings.BALE_WEBHOOK_SECRET = "new"
+    cmd = Command()
+    with (
+        patch.object(Command, "_self_test", return_value=True, create=True),
+        patch(
+            "urllib.request.urlopen",
+            side_effect=urllib.error.HTTPError("u", 403, "Forbidden", {}, None),  # type: ignore[arg-type]
+        ),
+    ):
+        cmd._loopback_test("https://api.kaveh185.ir/api/v1/notifications/bale/webhook/")

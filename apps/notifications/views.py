@@ -312,6 +312,10 @@ class BaleWebhookAPIView(APIView):
             return Response({"ok": False}, status=status.HTTP_403_FORBIDDEN)
 
         payload = request.data if isinstance(request.data, dict) else {}
+        # آزمونِ حلقه‌ای (`bale_webhook --probe`) یک آپدیتِ ساختگی می‌فرستد تا کلِ
+        # مسیر — کلید، ترتیبِ middleware، پردازش و پاسخ — سنجیده شود، ولی بدونِ
+        # ارسالِ پیام به هیچ گفتگوی واقعی (تا وقتِ کاربر را نگیرد).
+        probe_mode = bool(payload.get("_probe"))
         message = payload.get("message") or {}
         chat = message.get("chat") or {}
         if chat.get("id") is None:
@@ -329,7 +333,7 @@ class BaleWebhookAPIView(APIView):
         if resend_for:
             _resend_otp_via_bale(phone_number=resend_for, chat_id=chat_id)
 
-        delivered = _safe_bale_reply(chat_id, str(result["reply"]))
+        delivered = None if probe_mode else _safe_bale_reply(chat_id, str(result["reply"]))
         return Response({"ok": True, "handled": result["handled"], "replied": delivered})
 
 
