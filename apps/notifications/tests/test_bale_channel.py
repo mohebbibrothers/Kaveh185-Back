@@ -679,3 +679,86 @@ def test_webhook_delete_reports_success(settings: Any) -> None:
     settings.ALLOWED_HOSTS = ["api.kaveh185.ir"]
     text = _call_webhook(settings, "--delete")
     assert "برداشته شد" in text
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  `bale_setup` — راه‌اندازیِ یک‌مرحله‌ای (`نوشتنِ .env` + تستِ تماس + وب‌هوک)
+# ══════════════════════════════════════════════════════════════════════════
+
+VALID_TOKEN = "123456789:AAHfakeTokenForTests_abcdefghijklmnop"
+
+
+def _write_env(tmp_path: Any) -> Any:
+    """یک `.env` نمونه با همان کلیدهای رمزِ واقعی می‌سازد."""
+    path = tmp_path / ".env"
+    path.write_text(
+        "DJANGO_SECRET_KEY=keep-me\nDB_PASSWORD=keep-me-too\nBALE_BOT_TOKEN=\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_bale_setup_writes_env_keeps_other_keys_and_never_prints_token(
+    tmp_path: Any, settings: Any
+) -> None:
+    """توکن در `.env` نوشته می‌شود، بقیهٔ کلیدها دست‌نخورده می‌مانند و چاپ نمی‌شود."""
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    env = _write_env(tmp_path)
+    settings.BALE_API_BASE = "https://tapi.bale.ai"
+    settings.ALLOWED_HOSTS = ["api.kaveh185.ir"]
+    out = StringIO()
+    with (
+        patch(
+            "apps.notifications.bale.get_me",
+            return_value={"ok": True, "username": "Kaveh185_bot", "name": "کاوه"},
+        ),
+        patch("apps.notifications.bale._api", return_value={"ok": True, "result": True}),
+    ):
+        call_command(
+            "bale_setup",
+            f"--token={VALID_TOKEN}",
+            f"--env-file={env}",
+            "--secret=testsecret",
+            stdout=out,
+        )
+
+    text = env.read_text(encoding="utf-8")
+    assert f"BALE_BOT_TOKEN={VALID_TOKEN}" in text
+    assert "BALE_BOT_USERNAME=Kaveh185_bot" in text  # از getMe، نه از حدس
+    assert "BALE_WEBHOOK_SECRET=testsecret" in text
+    assert "DJANGO_SECRET_KEY=keep-me" in text  # تنظیماتِ دیگر حفظ می‌شوند
+    assert "DB_PASSWORD=keep-me-too" in text
+    assert VALID_TOKEN not in out.getvalue()  # توکن هرگز چاپ نمی‌شود
+    assert (tmp_path / ".env.bak").exists()  # پشتیبان
+    assert "Restart" in out.getvalue()  # یادآوریِ restart پروسه
+
+
+def test_bale_setup_rejects_malformed_token(tmp_path: Any) -> None:
+    """توکنِ بدشکل پیش از هر نوشتنی رد می‌شود (`.env` نباید خراب شود)."""
+    import pytest as _pytest
+    from django.core.management import call_command
+    from django.core.management.base import CommandError
+
+    env = _write_env(tmp_path)
+    with _pytest.raises(CommandError):
+        call_command("bale_setup", "--token=not-a-token", f"--env-file={env}")
+    assert "BALE_BOT_TOKEN=\n" in env.read_text(encoding="utf-8")
+
+
+def test_bale_setup_status_explains_restart_need(tmp_path: Any, settings: Any) -> None:
+    """اگر توکن در فایل هست ولی پروسه نمی‌بیندش، علت و راه‌حل صریح گفته می‌شود."""
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    env = tmp_path / ".env"
+    env.write_text(f"BALE_BOT_TOKEN={VALID_TOKEN}\n", encoding="utf-8")
+    settings.BALE_BOT_TOKEN = ""
+    out = StringIO()
+    call_command("bale_setup", "--status", f"--env-file={env}", stdout=out)
+    text = out.getvalue()
+    assert "در فایل: هست" in text or "در `" in text
+    assert "restart" in text.lower()
