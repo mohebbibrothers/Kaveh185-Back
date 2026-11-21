@@ -762,3 +762,72 @@ def test_bale_setup_status_explains_restart_need(tmp_path: Any, settings: Any) -
     text = out.getvalue()
     assert "در فایل: هست" in text or "در `" in text
     assert "restart" in text.lower()
+
+
+def _run_check2(settings: Any, webhook_info: dict, *args: str) -> str:
+    """اجرای `bale_check` با `getWebhookInfo` مشخص و برگرداندنِ گزارش."""
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    settings.BALE_BOT_TOKEN = "test-token"
+    settings.BALE_BOT_USERNAME = "kaveh185_bot"
+    settings.BALE_WEBHOOK_SECRET = "s3cret"
+
+    def fake(method: str, payload: object = None, **_: object) -> dict:
+        if method == "getWebhookInfo":
+            return {"ok": True, "result": webhook_info}
+        return {"ok": True, "result": {"username": "kaveh185_bot", "first_name": "کاوه"}}
+
+    out = StringIO()
+    with (
+        patch("apps.notifications.bale._api", side_effect=fake),
+        patch(
+            "apps.notifications.bale.get_me",
+            return_value={"ok": True, "username": "kaveh185_bot", "name": "کاوه"},
+        ),
+    ):
+        call_command("bale_check", *args, stdout=out)
+    return out.getvalue()
+
+
+def test_bale_check_flags_webhook_that_bale_cannot_reach(settings: Any) -> None:
+    """«وب‌هوک ثبت شد» با «وب‌هوک کار می‌کند» یکی نیست.
+
+    بله اگر به نشانی نرسد، خطا را فقط در `getWebhookInfo` نگه می‌دارد. اگر
+    گزارش این را نگوید، کاربر «شروع» می‌زند و هیچ پاسخی نمی‌گیرد — بی‌صدا.
+    """
+    text = _run_check2(
+        settings,
+        {
+            "url": "https://api.kaveh185.ir/api/v1/notifications/bale/webhook/",
+            "last_error_message": "Wrong response from the webhook: 404 Not Found",
+            "pending_update_count": 3,
+        },
+    )
+    assert "بله نتوانسته به وب‌هوک برسد" in text
+    assert "آپدیت در صفِ بله مانده" in text
+    assert "کرانِ `bale_inbox`" in text
+
+
+def test_bale_check_zero_linked_users_is_normal_not_a_blocker(settings: Any) -> None:
+    """کاربرِ وصل‌نشده مانعِ آماده‌بودن نیست؛ هر کاربر در فرم خودش وصل می‌شود."""
+    with patch.object(BaleSubscriber.objects, "filter") as _filter:
+        pass  # فقط برای خوانایی؛ شمارشِ واقعی صفر است
+    text = _run_check2(
+        settings,
+        {"url": "https://api.kaveh185.ir/x", "pending_update_count": 0},
+    )
+    assert "طبیعی است" in text
+    assert "همه‌چیز آماده است" in text
+
+
+def test_bale_check_ping_explains_live_webhook_test(settings: Any) -> None:
+    """`--ping-webhook` می‌گوید برای آزمونِ زنده دقیقاً چه کاری لازم است."""
+    text = _run_check2(
+        settings,
+        {"url": "https://api.kaveh185.ir/x", "pending_update_count": 0},
+        "--ping-webhook",
+    )
+    assert "آزمونِ زندهٔ وب‌هوک" in text
+    assert "سالم به نظر می‌رسد" in text
