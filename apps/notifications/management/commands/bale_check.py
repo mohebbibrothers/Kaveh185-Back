@@ -37,6 +37,11 @@ class Command(BaseCommand):
             help="شماره‌ای که به ربات وصل است؛ یک پیامِ آزمایشی برایش بفرست.",
         )
         parser.add_argument(
+            "--fix",
+            action="store_true",
+            help="اگر وب‌هوک شکسته/حذف شده بود، دوباره ثبتش کن (برای کرانِ نگهبان).",
+        )
+        parser.add_argument(
             "--ping-webhook",
             action="store_true",
             help="به بله بگو یک آپدیتِ آزمایشی به وب‌هوک بفرستد و ببین پاسخ می‌گیرد یا نه.",
@@ -135,6 +140,9 @@ class Command(BaseCommand):
                 )
                 self._line(res.ok, "پیامِ آزمایشی رفت." if res.ok else f"ارسال نشد: {res.detail}")
 
+        if options["fix"]:
+            self._repair_webhook(problems)
+
         if options["ping_webhook"]:
             self._ping_webhook(problems)
 
@@ -152,6 +160,27 @@ class Command(BaseCommand):
         from apps.notifications import bale as bale_module
 
         return bale_module._api(method, payload)
+
+    def _repair_webhook(self, problems: list[str]) -> None:
+        """اگر وب‌هوک نبود یا خطا داشت، دوباره ثبتش می‌کند.
+
+        چرا؟ روی هاستِ اشتراکی هیچ پایشگری نیست؛ اگر روزی دامنه/گواهی عوض شود
+        یا بله وب‌هوک را کنار بگذارد، هیچ‌کس خبردار نمی‌شود و کدها بی‌صدا
+        نمی‌رسند. یک خطِ cron روی همین دستور، همان نقشِ نگهبان را دارد.
+        """
+        from django.core.management import call_command
+
+        url, info = self._webhook_state()
+        broken = not url or bool(info.get("last_error_message"))
+        if not broken:
+            self._line(True, "وب‌هوک سالم است؛ نیازی به ترمیم نبود.")
+            return
+        self.stdout.write(self.style.WARNING("  ⇒ تلاش برای ثبتِ دوبارهٔ وب‌هوک…"))
+        try:
+            call_command("bale_webhook", stdout=self.stdout)
+        except Exception as exc:  # pragma: no cover - خطای محیطی
+            self._line(False, f"ثبتِ دوباره انجام نشد: {exc}")
+            problems.append("وب‌هوک ترمیم نشد؛ کرانِ `bale_inbox` را فعال کن.")
 
     def _ping_webhook(self, problems: list[str]) -> None:
         """وب‌هوک را زنده می‌آزماید.

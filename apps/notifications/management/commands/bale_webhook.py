@@ -106,7 +106,7 @@ class Command(BaseCommand):
         if not res.get("ok"):
             raise CommandError(f"بله ثبتِ وب‌هوک را نپذیرفت: {res.get('description', '')}")
         self.stdout.write(self.style.SUCCESS(f"✓ وب‌هوک ثبت شد: {url}"))
-        healthy = self._self_test(url)
+        healthy = True if options.get("skip_self_test") else self._self_test(url)
         self._show()
         if not healthy:
             self.stdout.write("")
@@ -116,7 +116,11 @@ class Command(BaseCommand):
                     "کاربر «شروع» می‌زند و هیچ پاسخی نمی‌گیرد.\n"
                     "  دو انتخاب:\n"
                     "   ۱) نشانیِ درست را بدهید:  --url https://api.<domain>/…\n"
-                    "   ۲) وب‌هوک را بردارید و کران را فعال کنید:  bale_webhook --delete"
+                    "   ۲) وب‌هوک را بردارید و کران را فعال کنید:  bale_webhook --delete\n\n"
+                    "  نکته: این آزمون از روی خودِ سرور اجرا می‌شود. اگر نشانی را در مرورگر "
+                    "باز کردید و پاسخِ سلامت آمد، این خطا مربوط به شبکهٔ سرور است (هاست "
+                    "نمی‌تواند دامنهٔ خودش را از داخل باز کند) و می‌توانید با "
+                    "`--skip-self-test` ثبت را بدونِ آزمون انجام دهید."
                 )
             )
 

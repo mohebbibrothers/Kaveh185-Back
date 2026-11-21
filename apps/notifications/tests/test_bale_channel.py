@@ -995,3 +995,39 @@ def test_bale_inbox_refuses_to_race_with_active_webhook(
         call_command("bale_inbox", stdout=out)
     assert "وب‌هوک فعال است" in out.getvalue()
     sender.assert_not_called()
+
+
+def test_bale_check_fix_re_registers_broken_webhook(settings: Any) -> None:
+    """`bale_check --fix` وب‌هوکِ شکسته را دوباره ثبت می‌کند (نقشِ نگهبانِ کران)."""
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    settings.BALE_BOT_TOKEN = "test-token"
+    settings.BALE_WEBHOOK_SECRET = "s3cret"
+    settings.ALLOWED_HOSTS = ["api.kaveh185.ir"]
+    calls: list[str] = []
+
+    def fake(method: str, payload: object = None, **_: object) -> dict:
+        calls.append(method)
+        if method == "getWebhookInfo":
+            return {"ok": True, "result": {"url": "", "pending_update_count": 2}}
+        return {"ok": True, "result": True}
+
+    out = StringIO()
+    with (
+        patch("apps.notifications.bale._api", side_effect=fake),
+        patch(
+            "apps.notifications.bale.get_me",
+            return_value={"ok": True, "username": "kaveh185_bot", "name": "کاوه"},
+        ),
+        patch(
+            "apps.notifications.management.commands.bale_webhook.Command._self_test",
+            return_value=True,
+            create=True,
+        ),
+    ):
+        call_command("bale_check", "--fix", stdout=out)
+
+    assert "setWebhook" in calls  # دوباره ثبت شد
+    assert "ترمیم" in out.getvalue() or "ثبتِ دوباره" in out.getvalue()
