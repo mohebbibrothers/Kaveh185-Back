@@ -57,3 +57,74 @@ class SMSDeliveryLog(BaseModel):
     def __str__(self) -> str:
         """نمایش خوانای لاگ پیامک."""
         return f"SMS[{self.category}] -> {self.recipient_phone} ({self.status})"
+
+
+class BaleSubscriber(BaseModel):
+    """کاربری که رباتِ بله را «شروع» کرده و شماره‌اش را به ربات داده است.
+
+    ── چرا لازم است؟ ──────────────────────────────────────────────────────
+    بله برای ارسالِ پیام به یک شخص، `chat_id` می‌خواهد و `chat_id` را فقط
+    وقتی می‌دهد که **خودِ کاربر** با ربات شروع کرده باشد. ما شمارهٔ همراه را
+    از فرمِ ثبت‌نام داریم، ولی این پل را نداریم. این جدول همان پل است:
+    کاربر یک‌بار «شروع» و شماره‌اش را در ربات می‌فرستد، و از آن پس هر کدِ
+    تأییدی که برای آن شماره بخواهیم، از بله می‌رود — بدونِ پیامک و بدونِ
+    هیچ هزینه‌ای.
+
+    ── نکتهٔ امنیتی ───────────────────────────────────────────────────────
+    هر شماره فقط یک رکورد دارد (تغییرِ `chat_id` یعنی کاربر با حسابِ بلهٔ
+    دیگری آمده و رکورد به‌روز می‌شود، نه تکراری). خودِ کدِ تأیید هیچ‌جا
+    ذخیره نمی‌شود؛ فقط این «نشانی» نگه داشته می‌شود.
+    """
+
+    phone_number = models.CharField(
+        max_length=15,
+        unique=True,
+        db_index=True,
+        verbose_name="شماره همراه",
+    )
+    chat_id = models.BigIntegerField(db_index=True, verbose_name="شناسه گفتگو در بله")
+    bale_first_name = models.CharField(
+        max_length=80, blank=True, default="", verbose_name="نام در بله"
+    )
+    bale_username = models.CharField(
+        max_length=80, blank=True, default="", verbose_name="نام کاربری بله"
+    )
+    is_active = models.BooleanField(default=True, db_index=True, verbose_name="فعال")
+
+    class Meta:
+        verbose_name = "مشترک ربات بله"
+        verbose_name_plural = "مشترکان ربات بله"
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self) -> str:
+        """نمایش خوانا."""
+        return f"{self.phone_number} → chat {self.chat_id}"
+
+
+class BaleLinkCode(BaseModel):
+    """کدِ کوتاهِ اتصالِ شماره به گفتگوی بله (فقط هش نگه داشته می‌شود).
+
+    چرا؟ کاربر شماره‌اش را به ربات نمی‌فرستد و ما راهی نداریم بفهمیم یک
+    `chat_id` مالِ کدام شماره است. کدِ یک‌بارمصرف این پل را می‌سازد: سامانه کد
+    را به کاربری می‌دهد که شماره‌اش را از قبل می‌داند؛ کاربر کد را به ربات
+    می‌فرستد؛ ربات با دیدنِ کد می‌فهمد «این گفتگو = آن شماره».
+
+    ⚠️ کدِ خام هرگز ذخیره نمی‌شود (فقط `code_hash` با `SECRET_KEY`)، عمرش
+    کوتاه است و بعد از استفاده می‌سوزد. تعدادِ تلاشِ هر کد هم محدود است.
+    """
+
+    phone_number = models.CharField(max_length=15, db_index=True, verbose_name="شماره همراه")
+    code_hash = models.CharField(max_length=64, db_index=True, verbose_name="هش کد")
+    attempts = models.PositiveSmallIntegerField(default=0, verbose_name="تلاش‌ها")
+    expires_at = models.DateTimeField(db_index=True, verbose_name="انقضا")
+    consumed_at = models.DateTimeField(null=True, blank=True, verbose_name="زمان مصرف")
+
+    class Meta:
+        verbose_name = "کد اتصال بله"
+        verbose_name_plural = "کدهای اتصال بله"
+        ordering = ["-created_at", "-id"]
+        indexes = [models.Index(fields=["code_hash", "consumed_at"])]
+
+    def __str__(self) -> str:
+        """نمایش خوانا (بدونِ خودِ کد)."""
+        return f"{self.phone_number} · {'مصرف‌شده' if self.consumed_at else 'فعال'}"

@@ -7,3 +7,10 @@
 
 # 2. Clear expired Django sessions daily at 03:30 AM
 30 3 * * * cd ~/Kaveh185-Back && ~/virtualenv/Kaveh185-Back/3.13/bin/python manage.py clearsessions >> ~/kaveh185_maintenance.log 2>&1
+
+# 3. صف پیام‌ها را خالی کن (پیامک؛ اگر نبود، کد تأیید از راهِ بله) — هر ۲ دقیقه
+*/2 * * * * cd ~/Kaveh185-Back && ~/virtualenv/Kaveh185-Back/3.13/bin/python manage.py deliver_outbox --limit 100 >> ~/kaveh185_outbox.log 2>&1
+
+# 4. صندوق ورودیِ ربات بله را بخوان (کاربر «شروع» می‌زند و شماره/کدِ اتصال را می‌فرستد)
+#    اگر وب‌هوک را در بله تنظیم کرده‌اید (`setWebhook`)، این خط لازم نیست.
+* * * * * cd ~/Kaveh185-Back && ~/virtualenv/Kaveh185-Back/3.13/bin/python manage.py bale_inbox >> ~/kaveh185_bale.log 2>&1

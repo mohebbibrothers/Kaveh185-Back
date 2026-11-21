@@ -101,6 +101,20 @@ def _clear_auth_cookies(response: Response) -> Response:
     return response
 
 
+def _otp_sent_message(otp_info: dict[str, Any] | None) -> str:
+    """پیامِ صادقانهٔ «کد کجا رفت» بر اساسِ کانالِ واقعیِ تحویل.
+
+    کاربر نباید منتظرِ پیامکی بماند که هرگز نمی‌آید؛ اگر کد از بله رفته،
+    همان را می‌گوییم، و اگر هیچ کانالی در دسترس نبود، صریح راهنمایی می‌کنیم.
+    """
+    channel = str((otp_info or {}).get("delivery") or "none")
+    if channel == "bale":
+        return "کد تایید در بله برای شما ارسال شد. پیام‌های ربات را ببینید."
+    if channel == "sms":
+        return "کد تایید پیامکی به شماره همراه شما ارسال شد."
+    return "کد تایید صادر شد ولی ارسال نشد؛ کد را از پشتیبانی حوزه بگیرید."
+
+
 class ParticipantRegisterAPIView(APIView):
     """ثبت‌نام یکپارچهٔ شرکت‌کننده، انتخاب مسجد و فعال‌سازی دکمهٔ ورود به آزمون."""
 
@@ -144,7 +158,7 @@ class ParticipantRegisterAPIView(APIView):
                 },
                 status_code=status.HTTP_202_ACCEPTED,
                 code="otp_sent",
-                message="کد تایید پیامکی به شماره همراه شما ارسال شد.",
+                message=_otp_sent_message(result["otp"]),
             )
 
         tokens = result["tokens"]
@@ -222,7 +236,7 @@ class OTPRequestAPIView(APIView):
             data=otp_info,
             status_code=status.HTTP_202_ACCEPTED,
             code="otp_sent",
-            message="در صورت ثبت بودن شماره، کد تایید پیامکی ارسال شد.",
+            message=_otp_sent_message(otp_info),
         )
 
 

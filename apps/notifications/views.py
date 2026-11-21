@@ -2,23 +2,34 @@
 
 from __future__ import annotations
 
+from typing import Any
+
+from django.conf import settings
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.authentication.permissions import IsAdminRole
+from apps.authentication.throttles import OTPRequestRateThrottle
 from apps.core.outbox import relay_pending_outbox
 from apps.core.pagination import StandardLimitOffsetPagination
 from apps.core.responses import success_response
 
+from .bale import bale_is_configured, send_bale_message
 from .choices import SMSCategory
 from .selectors import get_sms_delivery_logs_queryset
 from .serializers import AdminSendTestSMSInputSerializer, SMSDeliveryLogSerializer
-from .services import send_sms_message
+from .services import (
+    bale_chat_for_phone,
+    consume_bale_code,
+    normalize_bale_phone,
+    remember_bale_chat,
+    send_sms_message,
+)
 
 
 class AdminSMSDeliveryLogListAPIView(APIView):
@@ -94,4 +105,112 @@ class AdminFlushOutboxAPIView(APIView):
         return success_response(
             data=stats,
             message="صف پیام‌های Outbox پردازش شد.",
+        )
+
+
+class BaleWebhookAPIView(APIView):
+    """دریافتِ آپدیت‌های رباتِ بله (وب‌هوک) — پلِ «کد اتصال» ⇄ «شماره همراه».
+
+    چرا وب‌هوک و نه فقط polling؟ روی هاستِ اشتراکی، cron هر دقیقه یک‌بار
+    اجرا می‌شود و کاربر باید تا ۶۰ ثانیه منتظر بماند. وب‌هوک همان لحظه جواب
+    می‌دهد. اگر وب‌هوک در دسترس نبود، دستورِ `bale_inbox` همان کار را با
+    تأخیر انجام می‌دهد — هر دو یک مسیرِ منطقی را صدا می‌زنند.
+    """
+
+    permission_classes: list[Any] = []
+    authentication_classes: list[Any] = []
+    throttle_classes: list[Any] = []
+
+    @extend_schema(
+        tags=["Notifications & Bale"],
+        summary="وب‌هوک دریافت آپدیت‌های ربات بله (تنظیم‌شده با secret)",
+        request=None,
+        responses={200: OpenApiTypes.OBJECT},
+    )
+    def post(self, request: Request) -> Response:
+        """پردازشِ یک آپدیت: ثبتِ شماره، مصرفِ کدِ اتصال، یا پاسخِ راهنما."""
+        expected = str(getattr(settings, "BALE_WEBHOOK_SECRET", "") or "")
+        if expected and request.headers.get("X-Bale-Secret", "") != expected:
+            return Response({"ok": False}, status=status.HTTP_403_FORBIDDEN)
+
+        message = (request.data or {}).get("message") or {}
+        chat = message.get("chat") or {}
+        chat_id = chat.get("id")
+        if chat_id is None:
+            return Response({"ok": True, "handled": "no_chat"})
+
+        text = str(message.get("text") or "").strip()
+        sender = message.get("from") or {}
+
+        linked = consume_bale_code(raw_text=text, chat=chat)
+        if linked.get("matched"):
+            reply = (
+                "اتصال برقرار شد ✅\n"
+                "از این پس پیام‌ها و کدهای تأییدِ سامانه در همین گفتگو می‌آید.\n"
+                "به سامانه برگردید و ادامه دهید."
+            )
+            handled = "linked"
+        else:
+            phone = normalize_bale_phone(text)
+            if phone:
+                remember_bale_chat(
+                    chat_id=int(chat_id),
+                    phone_number=phone,
+                    first_name=str(sender.get("first_name") or ""),
+                    username=str(sender.get("username") or ""),
+                )
+                reply = (
+                    "شمارهٔ شما ثبت شد ✅\n"
+                    "حالا به سامانه برگردید. اگر سامانه کدی برای اتصال نشان می‌دهد، "
+                    "همان کد را همین‌جا بفرستید."
+                )
+                handled = "phone"
+            elif text.startswith("/start"):
+                reply = (
+                    "سلام 👋\n"
+                    "این رباتِ مسابقهٔ کتاب‌خوانی حوزهٔ ۱۸۵ شهید کاوه است.\n\n"
+                    "برای اتصال، کدی که سامانه نشان می‌دهد را همین‌جا بفرستید — "
+                    "یا شمارهٔ همراه خود را به شکلِ 09121234567."
+                )
+                handled = "start"
+            else:
+                reply = (
+                    "کدِ اتصال یا شمارهٔ همراه را بفرستید.\n"
+                    "کدِ اتصال را از صفحهٔ ثبت‌نامِ سامانه بردارید (مثلِ A7K2QF)."
+                )
+                handled = "unknown"
+
+        send_bale_message(int(chat_id), reply)
+        return Response({"ok": True, "handled": handled})
+
+
+class BaleChannelStatusAPIView(APIView):
+    """وضعیتِ کانالِ بله برای یک شماره (آیا کد می‌تواند از بله برود؟).
+
+    فرانت پیش از نمایشِ دکمهٔ «دریافت کد در بله» همین را می‌پرسد تا کاربر
+    دکمهٔ بی‌فایده نبیند. پاسخ هیچ کد یا اطلاعاتِ شخصی برنمی‌گرداند.
+    """
+
+    permission_classes = [AllowAny]
+    authentication_classes: list[Any] = []
+    throttle_classes = [OTPRequestRateThrottle]
+
+    @extend_schema(
+        tags=["Notifications & Bale"],
+        summary="وضعیت اتصال بله برای یک شماره همراه",
+        parameters=[OpenApiParameter(name="phone_number", type=str, required=True)],
+        responses={200: OpenApiTypes.OBJECT},
+    )
+    def get(self, request: Request) -> Response:
+        """بازگرداندنِ وضعیتِ کانال (بدونِ افشای اینکه شماره در سامانه هست یا نه)."""
+        phone = normalize_bale_phone(str(request.query_params.get("phone_number", "")))
+        return Response(
+            {
+                "ok": True,
+                "data": {
+                    "bale_configured": bale_is_configured(),
+                    "bot_username": str(getattr(settings, "BALE_BOT_USERNAME", "")),
+                    "linked": bool(phone) and bale_chat_for_phone(phone) is not None,
+                },
+            }
         )

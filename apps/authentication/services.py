@@ -316,7 +316,7 @@ def create_and_send_otp(
         ip_address=ip_addr,
     )
 
-    enqueue_outbox(
+    outbox = enqueue_outbox(
         topic="sms.otp",
         recipient=norm_phone,
         payload={
@@ -326,15 +326,57 @@ def create_and_send_otp(
             "challenge_id": challenge.id,
         },
     )
+    bale_result = _deliver_otp_via_bale_if_needed(outbox=outbox, phone=norm_phone, code=code)
     result_payload: dict[str, Any] = {
         "challenge_id": challenge.id,
         "phone_number": norm_phone,
         "expires_in_seconds": OTP_TTL_SECONDS,
+        # `delivery` صادقانه می‌گوید کد از کدام راه رفت؛ فرانت باید همین را
+        # نشان دهد، نه پیامِ ثابتِ «پیامک شد» که ممکن است دروغ باشد.
+        "delivery": bale_result.get("channel", "none"),
     }
+    # اگر کانالِ بله در دسترس است ولی این شماره هنوز به ربات وصل نشده، یک «کدِ
+    # اتصال» هم می‌دهیم تا کاربر با یک کپی/ارسال، خودش را وصل کند و از آن پس
+    # کدها در بله بیاید. اگر قبلاً وصل است، کدِ بی‌مصرف نمی‌سازیم.
+    if bale_result.get("channel") == "none" and getattr(settings, "BALE_BOT_TOKEN", ""):
+        from apps.notifications.services import issue_bale_code
+
+        link = issue_bale_code(phone_number=norm_phone)
+        if link.get("code"):
+            result_payload["bale_link"] = {
+                "code": link["code"],
+                "bot_username": link["bot_username"],
+                "deep_link": link["deep_link"],
+                "expires_in_seconds": link["expires_in_seconds"],
+            }
     if getattr(settings, "OTP_EXPOSE_DEBUG_CODE", False):
         result_payload["debug_code"] = code
         result_payload["debug_otp_code"] = code
     return result_payload
+
+
+def _deliver_otp_via_bale_if_needed(*, outbox: Any, phone: str, code: str) -> dict[str, Any]:
+    """اگر پیامک نرفت (یا اصلاً تنظیم نشده)، کد را از راهِ بله می‌فرستد.
+
+    چرا این‌جا و نه در `enqueue_outbox`؟ چون Outbox لایهٔ عمومیِ پیام است و
+    نباید از OTP و بله بداند. این تصمیم مالِ همان‌جایی است که کد را می‌سازد.
+
+    خروجی: `{"channel": "bale" | "sms" | "none"}` — برای نمایشِ درست به کاربر.
+    """
+    from apps.core.choices import OutboxStatus
+    from apps.notifications.services import send_otp_via_bale
+
+    if outbox.status == OutboxStatus.SENT:
+        return {"channel": "sms"}
+
+    result = send_otp_via_bale(phone_number=phone, code=code)
+    if result.get("sent"):
+        outbox.status = OutboxStatus.SENT
+        outbox.processed_at = timezone.now()
+        outbox.last_error = "delivered: bale"
+        outbox.save(update_fields=["status", "processed_at", "last_error", "updated_at"])
+        return {"channel": "bale"}
+    return {"channel": "none"}
 
 
 def verify_otp_and_issue_session(

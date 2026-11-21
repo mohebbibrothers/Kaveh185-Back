@@ -340,6 +340,20 @@ SMS_API_URL = config("SMS_API_URL", default="")
 SMS_API_KEY = config("SMS_API_KEY", default="")
 SMS_SENDER_LINE = config("SMS_SENDER_LINE", default="3000185")
 SMS_TIMEOUT_SECONDS = config("SMS_TIMEOUT_SECONDS", default=4.0, cast=float)
+
+# ── رباتِ بله: کانالِ جایگزینِ پیامک برای کدِ تأیید ───────────────────────
+# تا وقتی پنلِ پیامکی (با اینماد) در دسترس نیست، کدِ یک‌بارمصرف از این ربات
+# می‌رود. `BALE_BOT_TOKEN` را از @BotFatherِ بله بگیر و در `.env` بگذار؛
+# اگر خالی باشد، ارسال از راهِ بله انجام نمی‌شود و فقط مسیرِ پیامک/کدِ محلی
+# می‌ماند (هیچ خطای کاربری رخ نمی‌دهد).
+BALE_BOT_TOKEN = config("BALE_BOT_TOKEN", default="")
+BALE_BOT_USERNAME = config("BALE_BOT_USERNAME", default="")
+BALE_API_BASE = config("BALE_API_BASE", default="https://tapi.bale.ai")
+#: متنِ راهنمای «شروع» که در پیامِ اولِ ربات می‌آید.
+BALE_WEBHOOK_SECRET = config("BALE_WEBHOOK_SECRET", default="")
+BALE_START_HINT = config(
+    "BALE_START_HINT", default="برای دریافت کد تأیید، شمارهٔ همراه خود را همین‌جا بفرستید."
+)
 OTP_EXPOSE_DEBUG_CODE = config("OTP_EXPOSE_DEBUG_CODE", default=False, cast=bool)
 
 # تنظیمات متریک‌ها، مستندات و گیت‌های امنیتی
