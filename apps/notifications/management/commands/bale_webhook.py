@@ -106,9 +106,62 @@ class Command(BaseCommand):
         if not res.get("ok"):
             raise CommandError(f"بله ثبتِ وب‌هوک را نپذیرفت: {res.get('description', '')}")
         self.stdout.write(self.style.SUCCESS(f"✓ وب‌هوک ثبت شد: {url}"))
+        healthy = self._self_test(url)
         self._show()
+        if not healthy:
+            self.stdout.write("")
+            self.stdout.write(
+                self.style.ERROR(
+                    "این نشانی از بیرون به اپلیکیشن نمی‌رسد؛ بله آپدیت‌ها را تحویل نمی‌دهد و "
+                    "کاربر «شروع» می‌زند و هیچ پاسخی نمی‌گیرد.\n"
+                    "  دو انتخاب:\n"
+                    "   ۱) نشانیِ درست را بدهید:  --url https://api.<domain>/…\n"
+                    "   ۲) وب‌هوک را بردارید و کران را فعال کنید:  bale_webhook --delete"
+                )
+            )
 
     # ── کمکی‌ها ────────────────────────────────────────────────────────────
+    def _self_test(self, url: str) -> bool:
+        """آزمونِ خودکارِ وب‌هوک: آیا نشانی از بیرون واقعاً پاسخ می‌دهد؟
+
+        چرا لازم است؟ `setWebhook` می‌گوید «ثبت شد» حتی وقتی آن نشانی ۴۰۴
+        می‌دهد؛ بله خطا را فقط در `getWebhookInfo` نگه می‌دارد و آپدیت‌ها صف
+        می‌شوند. آزمونِ زیر همان چیزی است که مرورگر می‌بیند: یک GET ساده به
+        مسیرِ سلامت. اگر پاسخِ خودِ اپلیکیشن نیامد، **همین حالا** هشدار می‌دهد،
+        نه فردا که کدها نرسیده‌اند.
+        """
+        import json
+        import urllib.error
+        import urllib.request
+
+        probe = url.rstrip("/") + "/"
+        try:
+            with urllib.request.urlopen(probe, timeout=8) as resp:  # noqa: S310
+                body = resp.read(400).decode("utf-8", errors="replace")
+                status = resp.status
+        except urllib.error.HTTPError as exc:
+            self._line(False, f"نشانیِ وب‌هوک از بیرون پاسخ {exc.code} داد: {probe}")
+            return False
+        except Exception as exc:  # pragma: no cover - شبکهٔ بیرونی
+            self._line(False, f"نشانیِ وب‌هوک از بیرون در دسترس نیست ({type(exc).__name__}).")
+            return False
+
+        try:
+            payload = json.loads(body)
+        except json.JSONDecodeError:
+            payload = {}
+        if status == 200 and payload.get("service") == "kaveh185-bale-webhook":
+            self._line(True, "نشانی از بیرون سالم است (پاسخِ سلامت دریافت شد).")
+            return True
+        self._line(False, f"نشانی پاسخ داد ولی این اپلیکیشن نبود ({status}): {body[:80]}")
+        return False
+
+    def _line(self, ok: bool, text: str) -> None:
+        """یک سطرِ گزارش."""
+        mark = "✓" if ok else "✗"
+        style = self.style.SUCCESS if ok else self.style.WARNING
+        self.stdout.write(style(f"  {mark} {text}"))
+
     def _resolve_url(self, given: str) -> str:
         """نشانیِ وب‌هوک: مقدارِ داده‌شده، وگرنه از دامنهٔ امنِ تنظیمات."""
         if given:

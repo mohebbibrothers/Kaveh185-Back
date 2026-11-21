@@ -906,3 +906,63 @@ def test_linking_with_active_challenge_triggers_fresh_code() -> None:
     result = process_bale_message(chat={"id": 5555}, text=code)
     assert result["handled"] == "linked"
     assert result.get("resend_otp_for") == user.phone_number
+
+
+def test_webhook_self_test_detects_wrong_host(settings: Any) -> None:
+    """ثبتِ وب‌هوک با نشانیِ اشتباه باید همان لحظه لو برود، نه فردا.
+
+    `setWebhook` همیشه می‌گوید «ثبت شد»؛ تنها راهِ فهمیدنِ درست بودن، زدنِ
+    همان نشانی از بیرون است. این تست همان بررسی را با پاسخِ ۴۰۴ می‌سنجد.
+    """
+    import urllib.error
+
+    from apps.notifications.management.commands.bale_webhook import Command
+
+    cmd = Command()
+    with patch(
+        "urllib.request.urlopen",
+        side_effect=urllib.error.HTTPError("u", 404, "Not Found", {}, None),  # type: ignore[arg-type]
+    ):
+        assert cmd._self_test("https://www.kaveh185.ir/api/v1/notifications/bale/webhook/") is False
+
+
+def test_webhook_self_test_accepts_real_health_payload(settings: Any) -> None:
+    """پاسخِ سلامتِ خودِ اپلیکیشن ⇒ سالم (وگرنه هر ۲۰۰ای کافی بود)."""
+    from apps.notifications.management.commands.bale_webhook import Command
+
+    class _Resp:
+        status = 200
+
+        def read(self, n: int = -1) -> bytes:
+            return b'{"ok": true, "service": "kaveh185-bale-webhook"}'
+
+        def __enter__(self) -> _Resp:
+            return self
+
+        def __exit__(self, *exc: object) -> None:
+            return None
+
+    cmd = Command()
+    with patch("urllib.request.urlopen", return_value=_Resp()):
+        assert cmd._self_test("https://api.kaveh185.ir/api/v1/notifications/bale/webhook/") is True
+
+
+def test_webhook_self_test_rejects_foreign_200(settings: Any) -> None:
+    """۲۰۰ِ صفحهٔ دیگری (مثلاً HTMLِ سایت) «سالم» حساب نمی‌شود."""
+    from apps.notifications.management.commands.bale_webhook import Command
+
+    class _Resp:
+        status = 200
+
+        def read(self, n: int = -1) -> bytes:
+            return b"<html>not the api</html>"
+
+        def __enter__(self) -> _Resp:
+            return self
+
+        def __exit__(self, *exc: object) -> None:
+            return None
+
+    cmd = Command()
+    with patch("urllib.request.urlopen", return_value=_Resp()):
+        assert cmd._self_test("https://kaveh185.ir/x/") is False
