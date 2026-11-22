@@ -91,12 +91,24 @@ class BaleNotConfigured(BaleError):
     """توکنِ ربات تنظیم نشده است."""
 
 
-def send_bale_message(chat_id: int, text: str) -> BaleResult:
-    """ارسالِ یک پیامِ متنی به یک گفتگو."""
+def send_bale_message(
+    chat_id: int, text: str, keyboard: dict[str, object] | None = None
+) -> BaleResult:
+    """ارسالِ یک پیامِ متنی (و در صورتِ نیاز، یک کیبوردِ دکمه‌ای) به یک گفتگو.
+
+    چرا `keyboard`؟ برای «صفر مکالمه» لازم است خودِ ربات یک دکمهٔ
+    «ارسالِ شمارهٔ من» (`request_contact`) بفرستد؛ بدونِ `reply_markup` کاربر
+    مجبور است شماره را تایپ کند — همان چیزی که قرار است حذف شود.
+    """
+    payload: dict[str, object] = {
+        "chat_id": chat_id,
+        "text": text,
+        "disable_web_page_preview": True,
+    }
+    if keyboard:
+        payload["reply_markup"] = keyboard
     try:
-        res = _api(
-            "sendMessage", {"chat_id": chat_id, "text": text, "disable_web_page_preview": True}
-        )
+        res = _api("sendMessage", payload)
     except BaleNotConfigured:
         raise
     except BaleError as exc:

@@ -115,6 +115,12 @@ class BaleLinkCode(BaseModel):
 
     phone_number = models.CharField(max_length=15, db_index=True, verbose_name="شماره همراه")
     code_hash = models.CharField(max_length=64, db_index=True, verbose_name="هش کد")
+    #: شناسهٔ کوتاهِ عمومیِ همین رکورد — در پیوندِ عمیق می‌رود
+    #: (`ble.ir/<bot>?start=<intent>`). چون قابلِ حدس نیست و فقط برای وصل‌کردن
+    #: به‌کار می‌رود، خودش راز نیست؛ در عوض شماره هرگز در نشانی نمی‌رود.
+    intent = models.CharField(
+        max_length=12, blank=True, default="", db_index=True, verbose_name="شناسهٔ نیّتِ پیوند"
+    )
     attempts = models.PositiveSmallIntegerField(default=0, verbose_name="تلاش‌ها")
     expires_at = models.DateTimeField(db_index=True, verbose_name="انقضا")
     consumed_at = models.DateTimeField(null=True, blank=True, verbose_name="زمان مصرف")

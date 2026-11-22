@@ -326,7 +326,14 @@ def create_and_send_otp(
             "challenge_id": challenge.id,
         },
     )
-    bale_result = _deliver_otp_via_bale_if_needed(outbox=outbox, phone=norm_phone, code=code)
+    # ⚠️ مسیرِ «صفر مکالمه»: کد به‌صورتِ هش ذخیره می‌شود و بازیابی‌شدنی نیست،
+    # ولی *همین* جایی است که کدِ خام در دست است. اگر تحویل از راهِ بله انجام
+    # شود، همان کد را برای لایهٔ فراخوان (ربات) برمی‌گردانیم تا بتواند عیناً
+    # در متنِ پیامِ بله بگذارد — بدونِ ساختنِ چالشِ دوم و بدونِ ذخیرهٔ رمز.
+    otp_code_for_channel: dict[str, str] = {}
+    bale_result = _deliver_otp_via_bale_if_needed(
+        outbox=outbox, phone=norm_phone, code=code, sink=otp_code_for_channel
+    )
     result_payload: dict[str, Any] = {
         "challenge_id": challenge.id,
         "phone_number": norm_phone,
@@ -349,13 +356,18 @@ def create_and_send_otp(
                 "deep_link": link["deep_link"],
                 "expires_in_seconds": link["expires_in_seconds"],
             }
+    if otp_code_for_channel.get("code"):
+        # فقط برای لایهٔ داخلی (ربات) — در پاسخِ HTTPِ عمومی برنمی‌گردد.
+        result_payload["channel_code"] = otp_code_for_channel["code"]
     if getattr(settings, "OTP_EXPOSE_DEBUG_CODE", False):
         result_payload["debug_code"] = code
         result_payload["debug_otp_code"] = code
     return result_payload
 
 
-def _deliver_otp_via_bale_if_needed(*, outbox: Any, phone: str, code: str) -> dict[str, Any]:
+def _deliver_otp_via_bale_if_needed(
+    *, outbox: Any, phone: str, code: str, sink: dict[str, str] | None = None
+) -> dict[str, Any]:
     """اگر پیامک نرفت (یا اصلاً تنظیم نشده)، کد را از راهِ بله می‌فرستد.
 
     چرا این‌جا و نه در `enqueue_outbox`؟ چون Outbox لایهٔ عمومیِ پیام است و
@@ -370,6 +382,8 @@ def _deliver_otp_via_bale_if_needed(*, outbox: Any, phone: str, code: str) -> di
         return {"channel": "sms"}
 
     result = send_otp_via_bale(phone_number=phone, code=code)
+    if sink is not None and result.get("sent"):
+        sink["code"] = code
     if result.get("sent"):
         outbox.status = OutboxStatus.SENT
         outbox.processed_at = timezone.now()

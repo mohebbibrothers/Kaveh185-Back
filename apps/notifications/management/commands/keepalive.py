@@ -73,8 +73,19 @@ class Command(BaseCommand):
 
     # ── کارها ───────────────────────────────────────────────────────────────
     def _python(self) -> str:
-        """مسیرِ مفسر — همان که همین دستور با آن اجرا شده (venvِ درست)."""
-        return sys.executable
+        """مسیرِ مفسر — همان که همین دستور با آن اجرا شده (venvِ درست).
+
+        ⚠️ روی cPanel گاهی `sys.executable` به یک نامِ ساختگی
+        (`.../bin/python3.12_bin`) اشاره می‌کند که از شل اجرا نمی‌شود؛ سپس
+        خطِ کران هر دو دقیقه در فایلِ لاگ «not found» می‌نویسد و هیچ‌کس
+        نمی‌بیند. پس اگر آن مسیر وجود نداشت، مسیرِ استانداردِ venv را می‌سازیم.
+        """
+        candidate = Path(sys.executable)
+        if candidate.exists():
+            return str(candidate)
+        fallback = BASE_DIR / ".." / "virtualenv" / "Kaveh185-Back"
+        matches = sorted(fallback.glob("*/bin/python")) if fallback.exists() else []
+        return str(matches[-1]) if matches else "python3"
 
     def _start(self, options: dict[str, Any]) -> None:
         """سرویس را واقعاً مستقل از نشستِ شل بالا می‌آورد (`setsid` + `nohup`)."""
@@ -161,7 +172,10 @@ class Command(BaseCommand):
         self._write_crontab("\n".join(lines) + "\n")
         self.stdout.write(self.style.SUCCESS("✓ خطِ کرانِ نگهبان نصب شد (هر ۲ دقیقه)."))
         self.stdout.write(f"  {self._cron_line()}")
-        self._start({"verbose": True})
+        # ⚠️ اگر سرویس زنده است، `--install` دوباره اجرا نمی‌کند؛ در خروجیِ
+        # واقعی، دو بار `--install` دو نمونه ساخت و پیامِ «قفل در دستِ نمونهٔ
+        # دیگر» را به‌دنبال داشت. حالا `handle` خودش این را می‌فهمد.
+        self.stdout.write("  اکنون: `manage.py keepalive` (یا کران خودش اجرا می‌کند).")
 
     def _uninstall_cron(self) -> None:
         """خطِ کرانِ نگهبان را برمی‌دارد."""

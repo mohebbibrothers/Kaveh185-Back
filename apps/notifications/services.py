@@ -11,6 +11,7 @@ from django.utils import timezone
 from apps.core.exceptions import DomainError
 from apps.core.models import OutboxMessage
 
+from .bale_intent import bot_deep_link, new_intent_token, share_contact_link
 from .choices import SMSCategory, SMSDeliveryStatus
 from .models import BaleSubscriber, SMSDeliveryLog
 from .providers import send_via_configured_gateway
@@ -269,19 +270,102 @@ def issue_bale_code(*, phone_number: str) -> dict[str, Any]:
         consumed_at=timezone.now()
     )
     code = _generate_bale_code()
+    # شناسهٔ نیّت: برای پیوندِ عمیقی که کاربر را **بدونِ هیچ تایپی** وصل می‌کند
+    # (`ble.ir/<bot>?start=<intent>`). جدا از `code` است تا اگر بله پارامتر را
+    # منتقل نکرد، همان کدِ ۶ کاراکتری مسیرِ پشتیبان بماند.
+    intent = new_intent_token()
     BaleLinkCode.objects.create(
         phone_number=phone,
         code_hash=_bale_code_hash(code),
+        intent=intent,
         expires_at=timezone.now() + timedelta(seconds=BALE_CODE_TTL_SECONDS),
     )
     username = str(getattr(settings, "BALE_BOT_USERNAME", "") or "").strip().lstrip("@")
     return {
         "code": code,
+        "intent": intent,
         "expires_in_seconds": BALE_CODE_TTL_SECONDS,
         "bot_username": username,
         "deep_link": f"https://ble.ir/{username}" if username else "",
+        "start_link": bot_deep_link(intent),
+        "contact_link": share_contact_link(),
         "already_linked": bale_chat_for_phone(phone) is not None,
     }
+
+
+def redeem_intent(*, raw_text: str, chat: dict[str, Any]) -> dict[str, Any]:
+    """اگر متن، شناسهٔ نیّت بود (از پیوندِ عمیق)، گفتگو را به شماره وصل می‌کند.
+
+    خروجی مثلِ `consume_bale_code` است: `{"matched": bool, "phone_number": str}`.
+    ⚠️ عمرِ نیّت همان عمرِ کد است و بعد از مصرف می‌سوزد؛ تلاشِ اشتباه هم شمرده
+    می‌شود تا کسی نتواند شناسه‌ها را حدس بزند.
+    """
+    from .models import BaleLinkCode
+
+    token = str(raw_text or "").strip().upper()
+    if len(token) != 6 or not token.isalnum():
+        return {"matched": False}
+
+    now = timezone.now()
+    row = (
+        BaleLinkCode.objects.filter(intent=token, consumed_at__isnull=True, expires_at__gt=now)
+        .order_by("-created_at", "-id")
+        .first()
+    )
+    if row is None:
+        return {"matched": False}
+
+    phone = row.phone_number
+    remember_bale_chat(
+        chat_id=int(chat.get("id") or 0),
+        phone_number=phone,
+        first_name=str(chat.get("first_name") or ""),
+        username=str(chat.get("username") or ""),
+    )
+    row.consumed_at = now
+    row.save(update_fields=["consumed_at", "updated_at"])
+    return {"matched": True, "phone_number": phone}
+
+
+def link_chat_by_contact(*, chat: dict[str, Any], contact: dict[str, Any]) -> dict[str, Any]:
+    """اتصالِ خودکار با شماره‌ای که بله در پیامِ «ارسالِ شمارهٔ من» فرستاده است.
+
+    ── چرا این امن است؟ ────────────────────────────────────────────────────
+    شماره‌ای که با دکمهٔ رسمیِ بله می‌آید به حسابِ همان کاربر گره خورده و
+    `contact.user_id` دارد. ما علاوه بر آن، فقط شماره‌هایی را می‌پذیریم که
+    **از قبل** در سامانه شرکت‌کننده دارند (همان محافظِ `issue_bale_code`).
+    پس این مسیر نه شمارهٔ دیگران را لو می‌دهد و نه امکانِ جعل دارد.
+
+    خروجی: `{"linked": bool, "phone_number": str, "has_challenge": bool}`.
+    """
+    from apps.authentication.models import User
+
+    phone = normalize_bale_phone(str(contact.get("phone_number") or ""))
+    if not phone:
+        return {"linked": False, "phone_number": "", "has_challenge": False}
+    if not User.objects.filter(phone_number=phone, role="participant").exists():
+        return {"linked": False, "phone_number": phone, "has_challenge": False}
+
+    remember_bale_chat(
+        chat_id=int(chat.get("id") or 0),
+        phone_number=phone,
+        first_name=str(contact.get("first_name") or chat.get("first_name") or ""),
+        username=str(chat.get("username") or ""),
+    )
+    # هر کدِ نیّتِ بازِ همین شماره بسته می‌شود (کار از طریقِ دکمه انجام شد).
+    from .models import BaleLinkCode
+
+    BaleLinkCode.objects.filter(phone_number=phone, consumed_at__isnull=True).update(
+        consumed_at=timezone.now()
+    )
+    challenge_id, _purpose = active_otp_challenge_for_phone(phone)
+    return {"linked": True, "phone_number": phone, "has_challenge": bool(challenge_id)}
+
+
+def phone_for_chat(chat_id: int) -> str:
+    """شماره‌ای که این گفتگو به آن وصل است (یا رشتهٔ خالی)."""
+    row = BaleSubscriber.objects.filter(chat_id=int(chat_id or 0), is_active=True).first()
+    return str(row.phone_number) if row else ""
 
 
 def active_otp_challenge_for_phone(phone_number: str) -> tuple[str, str]:

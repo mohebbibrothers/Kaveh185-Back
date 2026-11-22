@@ -25,16 +25,20 @@ from apps.core.pagination import StandardLimitOffsetPagination
 from apps.core.responses import success_response
 
 from .bale import BaleError, bale_is_configured, get_me, send_bale_message
+from .bale_intent import bot_deep_link, contact_request_keyboard
 from .choices import SMSCategory
 from .selectors import get_sms_delivery_logs_queryset
 from .serializers import AdminSendTestSMSInputSerializer, SMSDeliveryLogSerializer
 from .services import (
-    active_otp_challenge_for_phone,
     bale_chat_for_phone,
     consume_bale_code,
+    issue_bale_code,
+    link_chat_by_contact,
     normalize_bale_phone,
+    phone_for_chat,
+    prepare_otp_text,
     record_bale_delivery,
-    remember_bale_chat,
+    redeem_intent,
     send_sms_message,
 )
 
@@ -137,87 +141,161 @@ def _resend_otp_via_bale(*, phone_number: str, chat_id: int) -> bool:
 
 
 def process_bale_message(
-    *, chat: dict[str, Any], text: str, sender: dict[str, Any] | None = None
+    *,
+    chat: dict[str, Any],
+    text: str,
+    sender: dict[str, Any] | None = None,
+    contact: dict[str, Any] | None = None,
+    keyboard: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """پردازشِ یک پیامِ ورودیِ بله و تولیدِ پاسخ.
+    """پردازشِ یک پیامِ ورودیِ بله — با این فرض که **کاربر هیچ‌چیز تایپ نمی‌کند**.
 
-    ⚠️ این تابع تنها منبعِ حقیقت است: هم وب‌هوک و هم دستورِ `bale_inbox` همین
-    را صدا می‌زنند. اگر منطق دو جا تکرار شده بود، یک روز وب‌هوک چیزی می‌گفت و
-    مسیرِ کران چیزِ دیگری — و همان تفاوت، کاربر را در گامِ ثبت‌نام گم می‌کند.
+    ── تصمیمِ محصولی ───────────────────────────────────────────────────────
+    کاربرِ ما مکالمه با ربات نمی‌خواهد؛ فقط می‌خواهد کدِ ورود بگیرد و در آزمون
+    شرکت کند. پس ربات حق ندارد از او «کدِ اتصال» یا «شماره با دست» بخواهد.
+    تنها چیزی که می‌فرستد: یک دکمهٔ «ارسالِ شمارهٔ من» و بعد، خودِ کدِ تأیید.
+
+    ── سه مسیرِ ورود، به ترتیبِ اولویت ─────────────────────────────────────
+    ۱) **پیامِ `contact`** (دکمهٔ رسمیِ بله) ⇒ اتصالِ خودکار + ارسالِ فوریِ کد.
+    ۲) **پیوندِ عمیق** (`/start <intent>`) ⇒ اتصالِ خودکار + ارسالِ فوریِ کد.
+    ۳) **`/start`ِ خالی** ⇒ فقط دکمهٔ «ارسالِ شمارهٔ من»؛ هیچ متنی خواسته نمی‌شود.
+       (اگر کاربر پیامِ دیگری بفرستد، همان دکمه را دوباره می‌گیرد — بدونِ
+       سرزنش و بدونِ دستورِ تایپ.)
+
+    ⚠️ این تابع تنها منبعِ حقیقت است: وب‌هوک، `bale_inbox` و `bale_worker` همه
+    همین را صدا می‌زنند.
+
+    خروجی: `{"handled", "reply", "keyboard", "resend_otp_for", "otp_code"}`.
+    اگر `otp_code` پر باشد، لایهٔ ارسال همان را به‌جای `reply` می‌فرستد (پیامِ
+    کد متنِ مخصوصِ خودش را دارد).
     """
     sender = sender or {}
-    chat_id = chat.get("id")
+    chat_id = int(chat.get("id") or 0)
+    greeting = str(sender.get("first_name") or chat.get("first_name") or "").strip()
 
-    # «/start» با پارامتر (مثلِ `/start A7K2QF`) هم باید مثلِ کد رفتار کند:
-    # کاربر به‌طور طبیعی چیزی که کپی کرده را کنارِ دستورِ شروع می‌چسباند.
+    # ── ۱) دکمهٔ «ارسالِ شمارهٔ من» ────────────────────────────────────────
+    if contact:
+        result = link_chat_by_contact(chat=chat, contact=contact)
+        if not result.get("linked"):
+            return {
+                "handled": "contact_unlinked",
+                "reply": (
+                    "این شماره در سامانهٔ مسابقه ثبت نشده است.\n"
+                    "اول در سامانه با همین شماره ثبت‌نام کنید، بعد به همین گفتگو برگردید."
+                ),
+                "keyboard": None,
+            }
+        phone = str(result.get("phone_number") or "")
+        code = _issue_and_send_otp(phone=phone, chat_id=chat_id)
+        if code:
+            return {
+                "handled": "contact_linked",
+                "reply": "",
+                "otp_code": code,
+                "resend_otp_for": phone,
+            }
+        return {
+            "handled": "contact_linked",
+            "reply": ("شمارهٔ شما ثبت شد ✅\nحالا در سامانه «دریافتِ کد» را بزنید؛ کد همین‌جا می‌آید."),
+        }
+
     raw = str(text or "").strip()
-    if raw.lower().startswith("/start") and len(raw) > 6:
-        candidate = raw[6:].strip()
-        if candidate:
-            raw = candidate
 
-    linked = consume_bale_code(raw_text=raw, chat=chat)
-    if linked.get("matched"):
-        phone = str(linked.get("phone_number") or "")
-        # اگر کدی برای همین شماره فعال است، همان لحظه از بله می‌فرستیم تا
-        # کاربر لازم نباشد «ارسال دوباره» را بزند یا صفحه را رفرش کند.
-        challenge_id, purpose = active_otp_challenge_for_phone(phone)
-        if challenge_id:
-            reply = (
-                "اتصال برقرار شد ✅\n"
-                "کدِ تأییدِ شما در پیامِ بعدی همین گفتگو می‌آید.\n"
-                "(اگر دیر شده و کد منقضی شد، در صفحهٔ ثبت‌نام «ارسال دوبارهٔ کد» را بزنید.)"
-            )
-            return {"handled": "linked", "reply": reply, "resend_otp_for": phone}
-        del purpose
+    # «/start <payload>» — بله پارامترِ پیوندِ عمیق را همین‌طور می‌فرستد.
+    payload = raw[6:].strip() if raw.lower().startswith("/start") else ""
+
+    # ── ۲) پیوندِ عمیق (اولویتِ اول، چون خودکار است) ──────────────────────
+    for candidate in (payload, raw):
+        if not candidate:
+            continue
+        redeemed = redeem_intent(raw_text=candidate, chat=chat)
+        if not redeemed.get("matched"):
+            continue
+        phone = str(redeemed.get("phone_number") or "")
+        code = _issue_and_send_otp(phone=phone, chat_id=chat_id)
+        return {
+            "handled": "intent_linked",
+            "reply": "" if code else "شمارهٔ شما تأیید شد ✅",
+            "otp_code": code,
+            "resend_otp_for": phone,
+        }
+
+    # ── ۲ب) کدِ دستی: فقط اگر خودتان خواستید تایپ کنید (مسیرِ پشتیبان) ────
+    for candidate in (raw, payload):
+        if not candidate:
+            continue
+        legacy = consume_bale_code(raw_text=candidate, chat=chat)
+        if not legacy.get("matched"):
+            continue
+        phone = str(legacy.get("phone_number") or "")
+        code = _issue_and_send_otp(phone=phone, chat_id=chat_id)
         return {
             "handled": "linked",
-            "reply": (
-                "اتصال برقرار شد ✅\n"
-                "از این پس پیام‌ها و کدهای تأییدِ سامانه در همین گفتگو می‌آید.\n"
-                "به سامانه برگردید و «ارسال دوبارهٔ کد» را بزنید."
-            ),
+            "reply": "" if code else "اتصال برقرار شد ✅",
+            "otp_code": code,
+            "resend_otp_for": phone,
         }
 
-    phone = normalize_bale_phone(raw)
-    if phone:
-        remember_bale_chat(
-            chat_id=int(chat_id or 0),
-            phone_number=phone,
-            first_name=str(sender.get("first_name") or ""),
-            username=str(sender.get("username") or ""),
-        )
+    # ── ۲ج) شمارهٔ تایپ‌شده: مسیرِ پشتیبانِ قدیمی، برای سازگاری ────────────
+    # ⚠️ ما هرگز این را از کاربر نمی‌خواهیم؛ ولی اگر کسی خودش شماره را فرستاد،
+    # بی‌پاسخ نمی‌ماند و همان کد را می‌گیرد (بدونِ اینکه مسیرِ اصلی خراب شود).
+    guessed = normalize_bale_phone(raw)
+    if guessed:
+        linked_by_phone = link_chat_by_contact(chat=chat, contact={"phone_number": guessed})
+        if linked_by_phone.get("linked"):
+            code = _issue_and_send_otp(phone=guessed, chat_id=chat_id)
+            return {
+                "handled": "phone",
+                "reply": "" if code else "شمارهٔ شما ثبت شد ✅",
+                "otp_code": code,
+                "resend_otp_for": guessed,
+            }
+
+    # ── ۳) «شروع» یا هر پیامِ دیگر: فقط یک دکمه، هیچ تایپی ────────────────
+    if chat_id and phone_for_chat(chat_id):
+        # این گفتگو از قبل به شماره‌ای وصل است؛ کد را دوباره بفرست.
+        phone = phone_for_chat(chat_id)
+        code = _issue_and_send_otp(phone=phone, chat_id=chat_id) if phone else ""
         return {
-            "handled": "phone",
-            "reply": (
-                "شمارهٔ شما ثبت شد ✅\n"
-                "حالا به سامانه برگردید. اگر سامانه کدی برای اتصال نشان می‌دهد، "
-                "همان کد را همین‌جا بفرستید."
-            ),
+            "handled": "already_linked",
+            "reply": "" if code else "شمارهٔ شما قبلاً ثبت شده است.",
+            "otp_code": code,
+            "resend_otp_for": phone,
         }
 
-    if raw.startswith("/start"):
-        return {
-            "handled": "start",
-            "reply": (
-                "سلام 👋\n"
-                "این رباتِ مسابقهٔ کتاب‌خوانی حوزهٔ ۱۸۵ شهید کاوه است.\n\n"
-                "لطفاً همان‌جا در سامانه ثبت‌نام کنید؛ در گامِ دوم یک «کدِ اتصال» "
-                "(مثلِ A7K2QF) به شما نشان داده می‌شود — همان را همین‌جا بفرستید "
-                "تا کدِ تأیید در بله برایتان بیاید.\n\n"
-                "اگر سامانه در دسترس نیست، می‌توانید شمارهٔ همراه خود را به شکلِ "
-                "09121234567 بفرستید."
-            ),
-        }
-
+    hello = f"{greeting} عزیز، " if greeting else ""
     return {
-        "handled": "unknown",
+        "handled": "start" if raw.lower().startswith("/start") or not raw else "unknown",
         "reply": (
-            "سلام 👋\n"
-            "برای اتصال، کدی که سامانه نشان می‌دهد را بفرستید (مثلِ A7K2QF) — "
-            "یا شمارهٔ همراه خود را به شکلِ 09121234567."
+            f"{hello}خوش آمدید 👋\n"
+            "برای دریافتِ کدِ ورود، فقط دکمهٔ زیر را بزنید — نیازی به نوشتنِ چیزی نیست.\n\n"
+            "اگر دکمه را نمی‌بینید، از همین صفحه در سامانه دکمهٔ «ارسالِ شماره در بله» را بزنید.\n\n"
+            "راهِ پشتیبان: «کدِ اتصال»ی که سامانه به شما نشان می‌دهد را همین‌جا بفرستید."
         ),
+        "keyboard": contact_request_keyboard(),
     }
+
+
+def _issue_and_send_otp(*, phone: str, chat_id: int) -> str:
+    """یک کدِ تأییدِ تازه می‌سازد و **همان را** در همین گفتگو می‌فرستد.
+
+    ── چرا کدِ تازه و نه کدِ قبلی؟ ─────────────────────────────────────────
+    کد فقط به‌صورتِ هش ذخیره می‌شود و بازیابی‌شدنی نیست (تصمیمِ امنیتیِ درست).
+    پس تنها راهِ صادقانه این است که چالشِ تازه بسازیم و **همان کد** را در متنِ
+    پیام بگذاریم؛ کاربر همان را در سایت وارد می‌کند. چالشِ قبلی باطل می‌شود،
+    پس هیچ کدِ دومی هم بیرون نمی‌ماند.
+
+    خروجی: خودِ کد (برای متنِ پیام) یا رشتهٔ خالی اگر ارسال/ساخت ممکن نبود.
+    """
+    del chat_id  # ارسال از مسیرِ لینکِ ثبت‌شده انجام می‌شود (همان گفتگو)
+    from apps.authentication.services import create_and_send_otp
+
+    try:
+        result = create_and_send_otp(phone_number=phone)
+    except Exception:  # pragma: no cover - مسیرِ جانبی نباید تحویل را بشکند
+        logger.warning("ساخت/ارسالِ کدِ تازه از بله ناموفق بود (phone=%s)", phone)
+        return ""
+    return str(result.get("channel_code") or result.get("debug_code") or "")
 
 
 def _fingerprint(secret: str) -> str:
@@ -233,7 +311,7 @@ def _fingerprint(secret: str) -> str:
     return hashlib.sha256(secret.encode("utf-8")).hexdigest()[:6]
 
 
-def _safe_bale_reply(chat_id: int, text: str) -> bool:
+def _safe_bale_reply(chat_id: int, text: str, keyboard: dict[str, Any] | None = None) -> bool:
     """پاسخ به کاربر در بله — بدونِ آنکه خطا کلِ وب‌هوک را بشکند.
 
     چرا مهم است؟ اگر توکن تنظیم نشده باشد یا بله قطع شود، پرتابِ استثنا
@@ -242,7 +320,7 @@ def _safe_bale_reply(chat_id: int, text: str) -> bool:
     تبدیل شود. پس همیشه ۲۰۰ برمی‌گردانیم و فقط لاگ می‌گیریم.
     """
     try:
-        return send_bale_message(chat_id, text).ok
+        return send_bale_message(chat_id, text, keyboard).ok
     except BaleError as exc:
         logger.warning("پاسخِ بله ارسال نشد (chat=%s): %s", chat_id, exc)
         return False
@@ -394,6 +472,7 @@ class BaleWebhookAPIView(APIView):
                 chat=chat,
                 text=str(message.get("text") or ""),
                 sender=message.get("from") or {},
+                contact=message.get("contact") or {},
             )
         except Exception:
             logger.exception("پردازشِ آپدیتِ بله شکست خورد (chat=%s)", chat.get("id"))
@@ -412,7 +491,13 @@ class BaleWebhookAPIView(APIView):
         if resend_for:
             _resend_otp_via_bale(phone_number=resend_for, chat_id=chat_id)
 
-        delivered = None if probe_mode else _safe_bale_reply(chat_id, str(result["reply"]))
+        otp_code = str(result.get("otp_code") or "")
+        if probe_mode:
+            delivered = None
+        elif otp_code:
+            delivered = _safe_bale_reply(chat_id, prepare_otp_text(phone_number="", code=otp_code))
+        else:
+            delivered = _safe_bale_reply(chat_id, str(result["reply"]), result.get("keyboard"))
         if not probe_mode:
             record_bale_delivery(
                 chat_id=chat_id,
@@ -451,6 +536,70 @@ class BaleChannelStatusAPIView(APIView):
                     "bale_configured": bale_is_configured(),
                     "bot_username": _bale_username(),
                     "linked": bool(phone) and bale_chat_for_phone(phone) is not None,
+                },
+            }
+        )
+
+
+class BaleStartLinkAPIView(APIView):
+    """ساختِ «پیوندِ یک‌ضربه» برای وصل‌کردنِ گفتگو به شماره — بدونِ هیچ تایپی.
+
+    فرانت دو نشانی می‌گیرد:
+
+    * `start_link` — `ble.ir/<bot>?start=<intent>`: بله خودش `/start <intent>`
+      را به ربات می‌دهد و ما گفتگو را به شماره وصل می‌کنیم و کد را می‌فرستیم.
+    * `contact_link` — گفتگوی ربات را باز می‌کند تا کاربر دکمهٔ «ارسالِ شمارهٔ
+      من» را ببیند (مسیرِ پشتیبان اگر بله پارامتر را منتقل نکند).
+
+    ── امنیت ───────────────────────────────────────────────────────────────
+    فقط برای شماره‌ای که در سامانه ثبت‌نام کرده کار می‌کند (همان محافظِ
+    `issue_bale_code`)، پشتِ throttleِ OTP است، و شماره یا کد هیچ‌جا در نشانی
+    نمی‌رود. پاسخ هیچ کدِ تأییدی برنمی‌گرداند.
+    """
+
+    permission_classes = [AllowAny]
+    authentication_classes: list[Any] = []
+    throttle_classes = [OTPRequestRateThrottle]
+
+    @extend_schema(
+        tags=["Notifications & Bale"],
+        summary="ساختِ پیوندِ اتصالِ یک‌ضربه (بدونِ تایپ در بله)",
+        request=None,
+        parameters=[OpenApiParameter(name="phone_number", type=str, required=True)],
+        responses={200: OpenApiTypes.OBJECT},
+    )
+    def get(self, request: Request) -> Response:
+        """پیوندهای آماده برای دکمهٔ «اتصال با بله» در صفحهٔ ثبت‌نام."""
+        phone = normalize_bale_phone(str(request.query_params.get("phone_number", "")))
+        if not phone:
+            return Response(
+                {
+                    "ok": False,
+                    "error": {"code": "invalid_phone", "message": "شماره همراه معتبر نیست."},
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        link = issue_bale_code(phone_number=phone)
+        if not link.get("code"):
+            return Response(
+                {
+                    "ok": True,
+                    "data": {
+                        "eligible": False,
+                        "message": "برای این شماره پروندهٔ شرکت‌کننده‌ای پیدا نشد.",
+                    },
+                }
+            )
+        return Response(
+            {
+                "ok": True,
+                "data": {
+                    "eligible": True,
+                    "start_link": link.get("start_link") or bot_deep_link(),
+                    "contact_link": link.get("contact_link") or bot_deep_link(),
+                    "bot_username": link.get("bot_username") or "",
+                    "expires_in_seconds": link.get("expires_in_seconds") or 0,
+                    "already_linked": bool(link.get("already_linked")),
                 },
             }
         )

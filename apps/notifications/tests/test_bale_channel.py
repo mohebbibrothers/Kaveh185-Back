@@ -290,7 +290,8 @@ def test_webhook_handles_start_phone_and_unknown_paths(client: Any) -> None:
         for text, expected in (
             ("/start", "start"),
             (user.phone_number, "phone"),
-            ("سلام", "unknown"),
+            # بعد از اتصال، هر پیامِ دیگر همان کد را دوباره می‌فرستد — نه سکوت.
+            ("سلام", "already_linked"),
         ):
             response = client.post(
                 "/api/v1/notifications/bale/webhook/",
@@ -857,18 +858,21 @@ def test_bale_check_ping_without_webhook_says_where_the_message_is(settings: Any
 
 
 @override_settings(BALE_BOT_TOKEN="test-token")
-def test_start_command_explains_next_step_instead_of_dead_end() -> None:
-    """`/start` باید بگوید «از سامانه کدِ اتصال بگیرید»، نه فقط خوش‌آمد.
+def test_start_command_offers_one_tap_and_no_typing() -> None:
+    """`/start` باید فقط **یک دکمه** بدهد و صریح بگوید «نیازی به نوشتن نیست».
 
-    پیامِ مبهم یعنی کاربر همان‌جا می‌ماند و ثبت‌نام را رها می‌کند؛ این متن
-    کوتاه‌ترین مسیر تا گامِ دوم را می‌گوید.
+    تصمیمِ محصولی: کاربر نباید با ربات مکالمه کند. پس پیامِ شروع نه شماره
+    می‌خواهد، نه کد؛ کیبوردِ «ارسالِ شمارهٔ من» می‌فرستد و مسیرِ دستی فقط
+    به‌عنوانِ پشتیبان ذکر می‌شود.
     """
     from apps.notifications.views import process_bale_message
 
     result = process_bale_message(chat={"id": 1}, text="/start")
     assert result["handled"] == "start"
-    assert "کدِ اتصال" in result["reply"]
-    assert "09121234567" in result["reply"]
+    assert "نیازی به نوشتنِ چیزی نیست" in result["reply"]
+    keyboard = result["keyboard"]
+    assert keyboard["keyboard"][0][0]["request_contact"] is True
+    assert "کدِ اتصال" in result["reply"]  # مسیرِ پشتیبان ذکر می‌شود
 
 
 @override_settings(BALE_BOT_TOKEN="test-token", BALE_BOT_USERNAME="kaveh185_bot")
@@ -1996,3 +2000,151 @@ def test_keepalive_uninstall_removes_marker(settings: Any) -> None:
     with patch("subprocess.run", return_value=Res()) as runner:
         call_command("keepalive", "--uninstall", stdout=StringIO())
     assert runner.called
+
+
+# ── مسیرِ «صفر مکالمه» (یک ضربه، بدونِ تایپ) ─────────────────────────────────
+
+
+@pytest.mark.django_db
+def test_contact_share_links_and_sends_code() -> None:
+    """پیامِ «ارسالِ شمارهٔ من» ⇒ اتصالِ خودکار + ارسالِ همان کد در همان گفتگو.
+
+    این مسیرِ اصلیِ محصول است: کاربر هیچ‌چیز تایپ نمی‌کند. شماره از خودِ بله
+    می‌آید و به حسابِ همان کاربر گره خورده است.
+    """
+    from apps.notifications.models import BaleSubscriber
+    from apps.notifications.views import process_bale_message
+
+    user = _make_participant(seq=931)
+    # کدِ خام از سرویسِ OTP می‌آید؛ این‌جا با `channel_code` شبیه‌سازی می‌شود.
+    with patch(
+        "apps.authentication.services.create_and_send_otp",
+        return_value={"channel_code": "654321"},
+    ):
+        result = process_bale_message(
+            chat={"id": 555111, "first_name": "کاوه"},
+            text="",
+            contact={"phone_number": user.phone_number, "first_name": "کاوه", "user_id": 9},
+        )
+
+    assert result["handled"] == "contact_linked"
+    assert result["otp_code"] == "654321"
+    assert BaleSubscriber.objects.get(phone_number=user.phone_number).chat_id == 555111
+
+
+@pytest.mark.django_db
+def test_contact_share_from_unknown_phone_is_refused() -> None:
+    """شماره‌ای که پروندهٔ شرکت‌کننده ندارد ⇒ پیامِ روشن، بدونِ اتصال."""
+    from apps.notifications.models import BaleSubscriber
+    from apps.notifications.views import process_bale_message
+
+    result = process_bale_message(
+        chat={"id": 777},
+        text="",
+        contact={"phone_number": "09999999999"},
+    )
+    assert result["handled"] == "contact_unlinked"
+    assert "ثبت نشده" in result["reply"]
+    assert not BaleSubscriber.objects.filter(phone_number="09999999999").exists()
+
+
+@pytest.mark.django_db
+def test_deep_link_intent_links_without_typing() -> None:
+    """`/start <intent>` از پیوندِ عمیق ⇒ اتصال + کد، بدونِ هیچ تایپی از کاربر."""
+    from apps.notifications.models import BaleSubscriber
+    from apps.notifications.services import issue_bale_code
+    from apps.notifications.views import process_bale_message
+
+    user = _make_participant(seq=932)
+    link = issue_bale_code(phone_number=user.phone_number)
+    assert link["intent"] and "؟" not in link["intent"]
+    assert "start=" in link["start_link"]
+
+    with patch(
+        "apps.authentication.services.create_and_send_otp",
+        return_value={"channel_code": "111222"},
+    ):
+        result = process_bale_message(chat={"id": 424242}, text=f"/start {link['intent']}")
+
+    assert result["handled"] == "intent_linked"
+    assert result["otp_code"] == "111222"
+    assert BaleSubscriber.objects.get(phone_number=user.phone_number).chat_id == 424242
+
+
+@pytest.mark.django_db
+def test_intent_is_single_use_and_expires() -> None:
+    """شناسهٔ نیّت یک‌بارمصرف است؛ استفادهٔ دوم پذیرفته نمی‌شود."""
+    from django.utils import timezone
+
+    from apps.notifications.services import issue_bale_code, redeem_intent
+
+    user = _make_participant(seq=933)
+    link = issue_bale_code(phone_number=user.phone_number)
+
+    first = redeem_intent(raw_text=link["intent"], chat={"id": 1})
+    assert first["matched"] is True
+    second = redeem_intent(raw_text=link["intent"], chat={"id": 2})
+    assert second["matched"] is False
+
+    # منقضی‌شده هم پذیرفته نمی‌شود
+    fresh = issue_bale_code(phone_number=user.phone_number)
+    from apps.notifications.models import BaleLinkCode
+
+    BaleLinkCode.objects.filter(intent=fresh["intent"]).update(expires_at=timezone.now())
+    assert redeem_intent(raw_text=fresh["intent"], chat={"id": 3})["matched"] is False
+
+
+@pytest.mark.django_db
+def test_start_link_endpoint_returns_one_tap_links(client: Any) -> None:
+    """`start-link` دو پیوندِ آماده می‌دهد؛ هیچ کدی برنمی‌گرداند."""
+    user = _make_participant(seq=934)
+    res = client.get(
+        f"/api/v1/notifications/bale/start-link/?phone_number={user.phone_number}",
+    )
+    assert res.status_code == 200
+    data = res.json()["data"]
+    assert data["eligible"] is True
+    assert data["start_link"].startswith("https://ble.ir/")
+    assert "start=" in data["start_link"]
+    assert "code" not in data
+
+
+def test_start_link_endpoint_rejects_bad_phone(client: Any) -> None:
+    """شمارهٔ نامعتبر ⇒ ۴۰۰ با پیامِ روشن (نه ۵۰۰)."""
+    res = client.get("/api/v1/notifications/bale/start-link/?phone_number=abc")
+    assert res.status_code == 400
+    assert res.json()["error"]["code"] == "invalid_phone"
+
+
+@pytest.mark.django_db
+def test_start_link_endpoint_reports_ineligible_number(client: Any) -> None:
+    """شمارهٔ بی‌پرونده ⇒ `eligible: false` (بدونِ افشای اینکه کاربر هست یا نه)."""
+    res = client.get("/api/v1/notifications/bale/start-link/?phone_number=09120000001")
+    assert res.status_code == 200
+    assert res.json()["data"]["eligible"] is False
+
+
+def test_contact_keyboard_asks_for_number_not_typing() -> None:
+    """کیبورد باید دکمهٔ رسمیِ اشتراکِ شماره باشد، نه درخواستِ تایپ."""
+    from apps.notifications.bale_intent import contact_request_keyboard
+
+    keyboard = contact_request_keyboard()
+    button = keyboard["keyboard"][0][0]
+    assert button["request_contact"] is True
+    assert keyboard["one_time_keyboard"] is True
+
+
+def test_keepalive_python_path_falls_back_when_sys_executable_is_odd(
+    settings: Any, tmp_path: Any, monkeypatch: Any
+) -> None:
+    """اگر `sys.executable` وجود نداشت (تلهٔ cPanel)، مسیرِ معتبرِ دیگری بدهد.
+
+    در خروجیِ واقعی، خطِ کران `.../bin/python3.12_bin` نوشت و هر اجرا در لاگ
+    «not found» شد؛ یعنی نگهبان بی‌صدا مرده بود.
+    """
+    from apps.notifications.management.commands.keepalive import Command
+
+    monkeypatch.setattr("sys.executable", str(tmp_path / "python3.12_bin"))
+    path = Command()._python()
+    assert path
+    assert "python3.12_bin" not in path or path == "python3"
