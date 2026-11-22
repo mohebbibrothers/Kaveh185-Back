@@ -99,6 +99,48 @@ crontab -e
 
 ---
 
+## ۶٫۵) نتیجهٔ نهاییِ آزمون (قطعی) و راه‌حلِ برگزیده
+
+| آزمون | نتیجه |
+|---|---|
+| `--nudge` (تحویلِ اجباری از بله) | ✗ بله هیچ آپدیتی نفرستاد |
+| کنترلِ کران (`bale_inbox --verbose`) | ✓ **۱۷ آپدیت خواند** و ۵ پاسخ با ✓ ارسال شد |
+| دفترِ تحویل | ✓ `polling · start · پاسخ=✓` |
+
+جمع‌بندی: **بله وب‌هوکِ این دامنه را تحویل نمی‌دهد** (ثبت می‌کند، `pending_update_count`
+صفر گزارش می‌کند، ولی ۱۷ آپدیت در صف می‌مانند). کدِ ما سالم است.
+پس مسیرِ رسمی = **long-polling به‌صورتِ سرویسِ همیشه‌بیدار**:
+
+```bash
+$PY manage.py bale_webhook --delete      # وب‌هوک را بردار (اگر هست)
+$PY manage.py bale_worker --status       # باید «وب‌هوک ثبت نیست» بگوید
+$PY manage.py bale_worker                # اجرای پیوسته؛ پاسخ در < ۱ ثانیه
+```
+
+برای اینکه بعد از بستنِ ترمینال زنده بماند:
+
+```bash
+# اگر systemd دارید:
+sudo cp deploy/cpanel/bale_worker.service /etc/systemd/system/
+sudo systemctl enable --now bale_worker && sudo journalctl -u bale_worker -f
+
+# اگر Supervisor دارید (cPanel):
+cp deploy/cpanel/bale_worker_supervisor.conf ~/supervisord.conf.d/
+supervisorctl reread && supervisorctl update
+```
+
+و یک خط کران فقط به‌عنوانِ **نجات‌بخش** (اگر سرویس مُرد، حداکثر یک دقیقه بعد):
+
+```
+* * * * * cd ~/Kaveh185-Back && ($PY manage.py bale_worker --status | grep -q "زنده است" || $PY manage.py bale_worker --once >> ~/kaveh185_bale.log 2>&1)
+```
+
+مزیت‌ها نسبت به کرانِ ساده: پاسخِ آنی (نه تا ۶۰ ثانیه)، پردازشِ تضمینیِ
+تک‌نمونه (قفلِ فایل)، بازگشتِ نمایی در خطای شبکه، ثبتِ قلبِ زندگی، و خروجِ
+تمیز با `SIGTERM`.
+
+---
+
 ## ۷) کارهایی که **همین حالا** باید انجام شود (امنیت)
 
 | مورد | چرا | دستور |

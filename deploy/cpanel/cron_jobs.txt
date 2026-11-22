@@ -17,6 +17,13 @@
 # 3. صف پیام‌ها را خالی کن (پیامک؛ اگر نبود، کد تأیید از راهِ بله) — هر ۲ دقیقه
 */2 * * * * cd ~/Kaveh185-Back && PYTHON_BIN manage.py deliver_outbox --limit 100 >> ~/kaveh185_outbox.log 2>&1
 
-# 4. صندوق ورودیِ ربات بله را بخوان (کاربر «شروع» می‌زند و شماره/کدِ اتصال را می‌فرستد)
-#    اگر وب‌هوک را در بله تنظیم کرده‌اید (`setWebhook`)، این خط لازم نیست.
-* * * * * cd ~/Kaveh185-Back && PYTHON_BIN manage.py bale_inbox >> ~/kaveh185_bale.log 2>&1
+# 4. ربات بله — دو انتخاب (فقط یکی را فعال کنید):
+#
+#    ۴الف) سرویسِ همیشه‌بیدارِ long-polling (توصیه‌شده؛ پاسخ در < ۱ ثانیه):
+#           python manage.py bale_worker            ← در systemd/supervisor
+#         و کرانِ نجات‌بخشِ زیر فقط اگر سرویس مرده باشد فعال می‌شود
+#         (سلامت از روی tmp/bale-worker.heartbeat سنجیده می‌شود):
+* * * * * cd ~/Kaveh185-Back && (PYTHON_BIN manage.py bale_worker --status | grep -q "زنده است" || PYTHON_BIN manage.py bale_worker --once >> ~/kaveh185_bale.log 2>&1)
+#
+#    ۴ب) بدونِ سرویس (ساده‌ترین): یک دور در هر دقیقه — تأخیرِ تا ۶۰ ثانیه.
+# * * * * * cd ~/Kaveh185-Back && PYTHON_BIN manage.py bale_inbox >> ~/kaveh185_bale.log 2>&1

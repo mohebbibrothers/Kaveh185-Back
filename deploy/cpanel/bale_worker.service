@@ -1,0 +1,31 @@
+# Kaveh185 — سرویسِ همیشه‌بیدارِ رباتِ بله (long-polling)
+#
+# چرا نه وب‌هوک؟ روی همین هاست ثابت شد بله وب‌هوک را «ثبت» می‌کند ولی تحویل
+# نمی‌دهد (۱۷ آپدیت در صف ماند، در حالی که pending_update_count صفر بود).
+# چرا نه کرانِ ۱ دقیقه‌ای؟ تأخیرِ تا ۶۰ ثانیه و امکانِ اجرای هم‌پوشان.
+#
+# نصب (روی سرورِ خودتان، با دسترسیِ systemd):
+#   sudo cp bale_worker.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now bale_worker
+#   sudo journalctl -u bale_worker -f
+
+[Unit]
+Description=Kaveh185 Bale bot worker (long-polling)
+After=network-online.target
+
+[Service]
+Type=simple
+User=kavehir
+WorkingDirectory=/home/kavehir/Kaveh185-Back
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/kavehir/virtualenv/Kaveh185-Back/3.12/bin/python manage.py bale_worker --quiet
+Restart=always
+RestartSec=5
+# ⚠️ اگر دو نمونه هم‌زمان اجرا شوند، یک پیام دو بار پاسخ می‌گیرد؛ خودِ دستور
+# هم قفلِ فایل دارد، ولی این دو خط لایهٔ دومِ محافظت است.
+KillSignal=SIGTERM
+TimeoutStopSec=40
+
+[Install]
+WantedBy=multi-user.target

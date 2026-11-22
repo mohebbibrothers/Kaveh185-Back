@@ -1690,3 +1690,161 @@ def test_doctor_nudge_reports_timeout(settings: Any) -> None:
     ):
         command._nudge("https://api.kaveh185.ir/x/")
     assert "هیچ آپدیتی نفرستاد" in command.stdout.getvalue()  # type: ignore[attr-defined]
+
+
+def _worker_module(tmp_path: Any, monkeypatch: Any):
+    from apps.notifications.management.commands import bale_worker as module
+
+    monkeypatch.setattr(module, "OFFSET_FILE", tmp_path / "offset.json")
+    monkeypatch.setattr(module, "HEARTBEAT_FILE", tmp_path / "hb.json")
+    monkeypatch.setattr(module, "LOCK_FILE", tmp_path / "lock")
+    return module
+
+
+@pytest.mark.django_db
+def test_worker_once_consumes_updates_and_records_delivery(
+    settings: Any, tmp_path: Any, monkeypatch: Any
+) -> None:
+    """یک دور: آپدیت خوانده، پاسخ ارسال، offset جلو، تحویل ثبت."""
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    from apps.notifications.models import BaleDeliveryLog
+
+    module = _worker_module(tmp_path, monkeypatch)
+    settings.BALE_BOT_TOKEN = "t"
+
+    def fake_api(method: str, payload: object = None, **_: object) -> dict:
+        if method == "getUpdates":
+            return {
+                "ok": True,
+                "result": [{"update_id": 41, "message": {"chat": {"id": 31337}, "text": "/start"}}],
+            }
+        return {"ok": True, "result": True}
+
+    out = StringIO()
+    with (
+        patch("apps.notifications.management.commands.bale_worker._api", side_effect=fake_api),
+        patch(
+            "apps.notifications.bale.send_bale_message",
+            return_value=type("R", (), {"ok": True})(),
+        ),
+    ):
+        call_command("bale_worker", "--once", "--verbose", "--force", stdout=out)
+    assert "update=41" in out.getvalue()
+    assert module._read_offset() == 42
+    row = BaleDeliveryLog.objects.get()
+    assert row.source == "polling" and row.replied is True
+
+
+@pytest.mark.django_db
+def test_worker_survives_processing_crash(settings: Any, tmp_path: Any, monkeypatch: Any) -> None:
+    """اگر پردازش بترکد، offset جلو می‌رود و حلقه قفل نمی‌شود."""
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    from apps.notifications.models import BaleDeliveryLog
+
+    module = _worker_module(tmp_path, monkeypatch)
+    settings.BALE_BOT_TOKEN = "t"
+
+    def fake_api(method: str, payload: object = None, **_: object) -> dict:
+        return {
+            "ok": True,
+            "result": [{"update_id": 7, "message": {"chat": {"id": 1}, "text": "x"}}],
+        }
+
+    with (
+        patch("apps.notifications.management.commands.bale_worker._api", side_effect=fake_api),
+        patch(
+            "apps.notifications.management.commands.bale_worker.process_bale_message",
+            side_effect=RuntimeError("boom"),
+        ),
+    ):
+        call_command("bale_worker", "--once", "--force", stdout=StringIO())
+    assert module._read_offset() == 8
+    assert BaleDeliveryLog.objects.get().handled == "error"
+
+
+def test_worker_status_reports_alive_and_dead(
+    settings: Any, tmp_path: Any, monkeypatch: Any
+) -> None:
+    """`--status` سنِ قلب را ترجمه می‌کند و هشدارِ وب‌هوکِ ثبت‌شده می‌دهد."""
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    module = _worker_module(tmp_path, monkeypatch)
+    settings.BALE_BOT_TOKEN = "t"
+
+    def fake_api(method: str, payload: object = None, **_: object) -> dict:
+        return {"ok": True, "result": {"url": "https://api.kaveh185.ir/x"}}
+
+    out = StringIO()
+    with patch("apps.notifications.management.commands.bale_worker._api", side_effect=fake_api):
+        call_command("bale_worker", "--status", stdout=out)
+    text = out.getvalue()
+    assert "هرگز اجرا نشده" in text
+    assert "وب‌هوک هنوز ثبت است" in text
+
+    module._heartbeat(0)
+    out = StringIO()
+    with patch("apps.notifications.management.commands.bale_worker._api", side_effect=fake_api):
+        call_command("bale_worker", "--status", stdout=out)
+    assert "زنده است" in out.getvalue()
+
+
+def test_worker_refuses_second_instance(settings: Any, tmp_path: Any, monkeypatch: Any) -> None:
+    """دو نمونهٔ هم‌زمان = پاسخِ تکراری؛ نمونهٔ دوم باید بلافاصله خارج شود."""
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    module = _worker_module(tmp_path, monkeypatch)
+    settings.BALE_BOT_TOKEN = "t"
+    module._heartbeat(0)  # قلبِ تازه ⇒ سرویسِ اصلی زنده است
+    out = StringIO()
+    call_command("bale_worker", stdout=out)
+    assert "یک نمونهٔ دیگر" in out.getvalue()
+
+    module.HEARTBEAT_FILE.unlink()
+    lock = module._Lock(module.LOCK_FILE)
+    assert lock.acquire() is True
+    out = StringIO()
+    call_command("bale_worker", "--once", stdout=out)
+    assert "قفل را در دست دارد" in out.getvalue()
+    lock.release()
+
+
+def test_worker_retries_on_api_error_then_exits(
+    settings: Any, tmp_path: Any, monkeypatch: Any
+) -> None:
+    """خطای بله ⇒ بازگشتِ نمایی، نه خروج؛ با `--max-seconds` بیرون می‌آید."""
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    from apps.notifications.bale import BaleError
+
+    _worker_module(tmp_path, monkeypatch)
+    settings.BALE_BOT_TOKEN = "t"
+    sleeps: list[float] = []
+    monkeypatch.setattr("time.sleep", lambda value: sleeps.append(value))
+    import itertools
+
+    ticks = itertools.count(0, 1)
+
+    def clock() -> float:
+        return float(next(ticks, 1000))
+
+    monkeypatch.setattr("time.monotonic", clock)
+    out = StringIO()
+    with patch(
+        "apps.notifications.management.commands.bale_worker._api", side_effect=BaleError("down")
+    ):
+        call_command("bale_worker", "--max-seconds", "3", "--force", stdout=out)
+    assert "خطای تماس با بله" in out.getvalue()
+    assert "به سقفِ زمان رسیدم" in out.getvalue()  # خروجِ تمیز، نه حلقهٔ بی‌پایان
+    assert sleeps == [1.0]  # بازگشتِ نمایی پیش از رسیدن به سقفِ زمانی
