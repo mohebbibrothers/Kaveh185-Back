@@ -152,6 +152,9 @@ class ParticipantRegisterAPIView(APIView):
                 data={
                     "is_new_user": result["created_new"],
                     "otp_required": True,
+                    # چرا کد لازم شد؟ «سیاستِ آزمون» یا «تأییدِ شماره» — فرانت با
+                    # همین، متنِ درست را نشان می‌دهد، نه پیامِ مبهم.
+                    "verification_reason": result.get("verification_reason", ""),
                     "otp": result["otp"],
                     "user": UserProfileOutputSerializer(user).data,
                     "exam_eligibility": eligibility,

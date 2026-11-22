@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Any
 
+from django.conf import settings
 from django.utils import timezone
 from rest_framework.permissions import BasePermission
 
@@ -90,7 +91,14 @@ class IsVerifiedParticipant(IsParticipantProfileReady):
         from apps.exam.selectors import get_or_create_exam_configuration
 
         config = get_or_create_exam_configuration()
-        if config.require_otp_before_exam and not getattr(user, "is_phone_verified", False):
+        # ⚠️ یا سیاستِ آزمون، یا تنظیمِ سراسریِ «تأییدِ شماره اجباری» — هر کدام
+        # که روشن باشد، ورود به آزمون بدونِ تأیید ممنوع است. پیش‌تر فقط دومی
+        # بررسی می‌شد و با خاموش‌بودنِ سوئیچِ ادمین، شمارهٔ تأییدنشده هم وارد
+        # آزمون می‌شد (باگِ واقعیِ گزارش‌شده).
+        mandatory = bool(getattr(settings, "BALE_OTP_MANDATORY", True))
+        if (config.require_otp_before_exam or mandatory) and not getattr(
+            user, "is_phone_verified", False
+        ):
             raise ForbiddenDomainError(
                 "بر اساس تنظیمات فعلی آزمون، پیش از ورود به آزمون باید شماره موبایل خود را با کد OTP تایید کنید.",
                 code="otp_verification_required",

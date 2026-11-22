@@ -160,8 +160,14 @@ def register_or_enter_participant(
     ۳) اگر همان کاربر (تطابق هم‌زمان کدملی و شماره تلفن) قبلاً ثبت‌نام کرده باشد:
        - در صورتی که هنوز آزمونی شروع نکرده باشد، اطلاعاتش به‌روز می‌شود.
        - اگر آزمونش در جریان یا تمام‌شده باشد، مسجد و هویتش قفل است تا تقلب نشود.
-    ۴) بر اساس تنظیم زندهٔ ادمین (`require_otp_before_exam`)، یا بلافاصله توکن ورود به
-       آزمون صادر می‌شود (پیش‌فرض برای سهولت حداکثری مشارکت مردم)، یا کد OTP پیامک می‌گردد.
+    ۴) **تأییدِ شماره همیشه الزامی است.** وقتی شماره‌های واقعی در کار است و کانالِ
+       تحویل از بله می‌آید، اجازهٔ ساختِ نشست بدونِ تأیید، یعنی هر کسی با شمارهٔ
+       دیگری می‌تواند وارد شود. بنابراین توکن فقط پس از `verify_otp` صادر می‌شود.
+
+    ── دو سوئیچِ مستقل ─────────────────────────────────────────────────────
+    * `require_otp_before_exam` (ادمین): «اجباری بودنِ کد برای ورود به آزمون».
+    * `BALE_OTP_MANDATORY` (تنظیمات): «اجباری بودنِ تأییدِ شماره در ثبت‌نام».
+      پیش‌فرض `True`؛ برای رویدادهای آزمایشی می‌توانید خاموشش کنید.
     """
     from apps.exam.choices import ExamAttemptStatus
     from apps.exam.models import ExamAttempt
@@ -255,7 +261,15 @@ def register_or_enter_participant(
                     increment_mosque_registered_count(mosque.id)
 
         exam_config = get_or_create_exam_configuration()
-        if exam_config.require_otp_before_exam:
+        # ⚠️ تصمیمِ امنیتی: حتی اگر ادمین «OTP اجباری برای آزمون» را خاموش کرده
+        # باشد، تا وقتی تنظیماتِ `BALE_OTP_MANDATORY` روشن است، هیچ نشستی بدونِ
+        # کد ساخته نمی‌شود. تفاوتِ این دو: اولی می‌گوید «برای آزمون کد لازم است
+        # یا نه»، دومی می‌گوید «هویتِ شماره باید تأیید شود یا نه».
+        mandatory_verification = bool(getattr(settings, "BALE_OTP_MANDATORY", True))
+        verification_needed = bool(exam_config.require_otp_before_exam) or mandatory_verification
+        if mandatory_verification and not user.is_phone_verified:
+            verification_needed = True
+        if verification_needed and not user.is_phone_verified:
             otp_info = create_and_send_otp(
                 phone_number=user.phone_number,
                 purpose=OTPPurpose.REGISTER,
@@ -267,9 +281,14 @@ def register_or_enter_participant(
                 "user": user,
                 "otp": otp_info,
                 "tokens": None,
+                # چه چیزی کاربر را وادار به تأیید کرد — برای پیامِ صادقانه به فرانت.
+                "verification_reason": (
+                    "exam_policy" if exam_config.require_otp_before_exam else "phone_verification"
+                ),
             }
 
-        if not user.is_phone_verified:
+        # تا این‌جا فقط وقتی می‌رسیم که تأیید لازم نبوده یا قبلاً انجام شده.
+        if not user.is_phone_verified:  # pragma: no cover - با BALE_OTP_MANDATORY+بله نمی‌رسد
             user.is_phone_verified = True
             user.save(update_fields=["is_phone_verified", "updated_at"])
 
@@ -460,7 +479,8 @@ def verify_otp_and_issue_session(
         if not user.is_active:
             raise ForbiddenDomainError("حساب کاربری شما غیرفعال شده است.", code="user_inactive")
 
-        if not user.is_phone_verified:
+        # تا این‌جا فقط وقتی می‌رسیم که تأیید لازم نبوده یا قبلاً انجام شده.
+        if not user.is_phone_verified:  # pragma: no cover - با BALE_OTP_MANDATORY+بله نمی‌رسد
             user.is_phone_verified = True
             user.save(update_fields=["is_phone_verified", "updated_at"])
 

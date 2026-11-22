@@ -355,6 +355,12 @@ BALE_WEBHOOK_SECRET = config("BALE_WEBHOOK_SECRET", default="")
 #: چون روی این هاست `api.` هم `www.` هم بدونِ پیشوند به یک اپ می‌رسند، بهترین
 #: کار pin کردنِ آن در `.env` است تا هیچ دستوری حدس نزند.
 BALE_WEBHOOK_URL = config("BALE_WEBHOOK_URL", default="")
+#: «آیا تأییدِ شماره با کد، در ثبت‌نام اجباری است؟» — پیش‌فرض بله.
+#: این سوئیچ از `require_otp_before_exam` (که ادمین در پنل می‌گرداند) جداست:
+#: آن یکی می‌گوید «برای آزمون کد لازم است یا نه»، این یکی می‌گوید «هویتِ شماره
+#: باید تأیید شود یا نه». با خاموش‌بودنِ این، هر کسی با شمارهٔ دیگری می‌توانست
+#: نشست بگیرد — همان باگی که در آزمونِ واقعی دیده شد.
+BALE_OTP_MANDATORY = config("BALE_OTP_MANDATORY", default=True, cast=bool)
 BALE_START_HINT = config(
     "BALE_START_HINT", default="برای دریافت کد تأیید، شمارهٔ همراه خود را همین‌جا بفرستید."
 )

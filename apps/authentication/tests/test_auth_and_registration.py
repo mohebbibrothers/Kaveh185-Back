@@ -36,11 +36,25 @@ def test_participant_registration_uniqueness_and_resume_flow(
         },
         format="json",
     )
-    assert reg_resp.status_code == 201
+    # ⚠️ تصمیمِ امنیتیِ جدید: ثبت‌نام بدونِ تأییدِ شماره نشست نمی‌دهد.
+    # پیش‌تر با `require_otp_before_exam=False` بلافاصله توکن صادر می‌شد و هر
+    # کسی با شمارهٔ دیگری می‌توانست وارد آزمون شود.
+    assert reg_resp.status_code == 202
     reg_data = reg_resp.json()["data"]
     assert reg_data["is_new_user"] is True
-    assert "tokens" in reg_data
+    assert reg_data["otp_required"] is True
+    assert "tokens" not in reg_data
     assert reg_data["user"]["phone_number"] == "09123456789"
+
+    # حالا همان کد را بگیریم و تأیید کنیم ⇒ نشست صادر می‌شود.
+    debug_code = reg_data["otp"].get("debug_otp_code") or reg_data["otp"].get("debug_code")
+    if debug_code:
+        verify_resp = api_client.post(
+            "/api/v1/auth/otp/verify/",
+            data={"phone_number": "09123456789", "code": debug_code},
+            format="json",
+        )
+        assert verify_resp.status_code in {200, 201}
     assert reg_data["user"]["birth_date_jalali"] == "1382/06/15"
     assert reg_data["user"]["mosque_id"] == mosque.id
 
@@ -137,7 +151,8 @@ def test_otp_request_verify_and_legacy_signup_deprecation(
         },
         format="json",
     )
-    assert legacy_resp.status_code == 201
+    # مسیر قدیمی هم همان سیاستِ امنیتی را دارد: ۲۰۲ + کد، نه نشستِ بی‌تأیید.
+    assert legacy_resp.status_code == 202
     assert legacy_resp["Deprecation"] == "true"
     assert "Sunset" in legacy_resp
 
@@ -344,3 +359,67 @@ def test_password_login_refresh_logout_admin_actions_and_risk_signals(
     assert otp_reg.json()["data"]["otp_required"] is True
     cfg.require_otp_before_exam = False
     cfg.save()
+
+
+def test_registration_never_issues_session_without_phone_verification(
+    api_client: APIClient,
+    seeded_mosques: list[Mosque],
+) -> None:
+    """باگِ واقعی: با `require_otp_before_exam=False` ثبت‌نام بی‌کد نشست می‌داد.
+
+    گزارشِ کاربر: «ثبت‌نام کردم، بدونِ اینکه کدی بیاید و شماره را تأیید کنم،
+    بلافاصله وارد آزمون شدم.» ریشه: سرویس، `is_phone_verified` را خودش True
+    می‌کرد و توکن می‌داد. اکنون `BALE_OTP_MANDATORY` (پیش‌فرض روشن) این را
+    ممنوع می‌کند — مستقل از سوئیچِ ادمین.
+    """
+    from apps.exam.selectors import get_or_create_exam_configuration
+
+    cfg = get_or_create_exam_configuration()
+    cfg.require_otp_before_exam = False  # همان حالتی که باگ می‌داد
+    cfg.save()
+
+    res = api_client.post(
+        "/api/v1/auth/register/",
+        data={
+            "first_name": "نگار",
+            "last_name": "صادقی",
+            "national_id": make_valid_national_id(401),
+            "phone_number": "09127778899",
+            "birth_date": "1383/02/20",
+            "mosque_id": seeded_mosques[0].id,
+        },
+        format="json",
+    )
+    assert res.status_code == 202
+    body = res.json()["data"]
+    assert body["otp_required"] is True
+    assert "tokens" not in body and "access" not in body
+    assert body["verification_reason"] in {"phone_verification", "exam_policy"}
+
+    user = User.objects.get(phone_number="09127778899")
+    assert user.is_phone_verified is False
+
+
+def test_unverified_user_cannot_start_exam(
+    api_client: APIClient, seeded_mosques: list[Mosque]
+) -> None:
+    """اگر کسی از مسیرِ دیگری نشست گرفت، درگاهِ آزمون او را برمی‌گرداند."""
+    from apps.authentication.services import issue_tokens_and_session
+
+    user = User.objects.create_user(
+        phone_number="09127770011",
+        national_id=make_valid_national_id(402),
+        first_name="بدون",
+        last_name="تایید",
+        birth_date="1383-02-20",
+        mosque=seeded_mosques[0],
+        role="participant",
+        is_phone_verified=False,
+    )
+    tokens = issue_tokens_and_session(user=user, request=None)
+    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {tokens['access']}")
+
+    res = api_client.post("/api/v1/exam/start/")
+    assert res.status_code in {403, 400}
+    payload = res.json()
+    assert "otp" in str(payload).lower() or "تایید" in str(payload) or "تأیید" in str(payload)

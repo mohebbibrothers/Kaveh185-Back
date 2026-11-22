@@ -76,12 +76,28 @@ def test_complete_real_world_kaveh185_e2e_journey() -> None:
         },
         format="json",
     )
-    assert reg_resp.status_code == 201
+    # ⚠️ سیاستِ امنیتی: ثبت‌نام هرگز بدونِ تأییدِ شماره نشست نمی‌دهد.
+    # پس این‌جا هم گامِ کد را می‌رویم — همان مسیری که کاربر واقعی می‌رود.
+    assert reg_resp.status_code == 202
     reg_data = reg_resp.json()["data"]
     assert reg_data["is_new_user"] is True
-    assert reg_data["otp_required"] is False
-    assert reg_data["exam_eligibility"]["can_enter_exam"] is True
-    participant_token = reg_data["access"]
+    assert reg_data["otp_required"] is True
+    assert "access" not in reg_data
+
+    otp_info = reg_data.get("otp") or {}
+    code = otp_info.get("debug_otp_code") or otp_info.get("debug_code") or ""
+    assert code, "کدِ تأیید برای این سفرِ آزمونی لازم است"
+
+    verify_resp = public_client.post(
+        "/api/v1/auth/otp/verify/",
+        data={"phone_number": "09129998877", "code": code},
+        format="json",
+    )
+    assert verify_resp.status_code in {200, 201}
+    participant_token = verify_resp.json()["data"].get("access") or verify_resp.json()["data"].get(
+        "tokens", {}
+    ).get("access")
+    assert participant_token
 
     participant_client = APIClient()
     participant_client.credentials(HTTP_AUTHORIZATION=f"Bearer {participant_token}")
