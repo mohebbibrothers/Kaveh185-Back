@@ -90,7 +90,30 @@ def test_draw_counts_even_out_over_time() -> None:
 
     این همان چیزی است که کاربر می‌خواهد: «سؤال‌ها عادلانه توزیع شوند».
     اگر `times_drawn` را نادیده بگیریم، این تست می‌شکند.
+
+    ⚠️ دانهٔ ثابت: این یک تستِ تضمینِ آماری است، نه تستِ تصادف. روی
+    `SystemRandom` واقعاً غیرقطعی بود و در CI (با ترتیبِ متفاوتِ اجرا) گاهی
+    می‌شکست — بدترین نوعِ تست. با دانهٔ ثابت، هم بازتولیدپذیر است هم اگر
+    کسی منطقِ تعادل را خراب کند، قرمز می‌شود.
     """
+    # تنها استثنا: تصادفِ **قطعی** برای تست. تولید هرگز از این ماژول
+    # استفاده نمی‌کند (`secrets.SystemRandom`).
+    import random as _random  # noqa: TID251
+
+    from apps.exam.selection import use_random_source
+
+    use_random_source(_random.Random(20261122))  # noqa: S311
+    try:
+        _draw_evenness_case()
+    finally:
+        # بازگشت به موتورِ امنِ تولید تا تست‌های بعدی رفتارِ واقعی را ببینند.
+        from apps.exam import selection as _sel
+
+        _sel.use_random_source(_sel._SYS_RANDOM)
+
+
+def _draw_evenness_case() -> None:
+    """بدنهٔ تستِ یکنواختی (جدا شده تا دانه‌گذاری/بازگردانی تمیز باشد)."""
     bank = build_bank(easy=10, medium=10, hard=10)
     draws: dict[int, int] = {}
     for _ in range(120):
@@ -101,6 +124,33 @@ def test_draw_counts_even_out_over_time() -> None:
     spread = max(draws.values()) - min(draws.values())
     average = sum(draws.values()) / len(draws)
     assert spread <= average * 1.2, f"توزیع ناهموار: {sorted(draws.values())}"
+
+
+@pytest.mark.parametrize("seed", [1, 7, 20261122, 99991])
+def test_evenness_holds_for_any_randomness(seed: int) -> None:
+    """یکنواختی باید مستقل از دانه باشد — نه نتیجهٔ یک دانهٔ خوش‌شانس.
+
+    بدونِ این، تستِ بالا فقط می‌گفت «با این دانه خوب شد». اگر منطقِ تعادل
+    خراب شود، این پارامتری‌سازی هم قرمز می‌شود.
+    """
+    # تنها استثنا: تصادفِ **قطعی** برای تست. تولید هرگز از این ماژول
+    # استفاده نمی‌کند (`secrets.SystemRandom`).
+    import random as _random  # noqa: TID251
+
+    from apps.exam import selection as _sel
+
+    _sel.use_random_source(_random.Random(seed))  # noqa: S311
+    try:
+        bank = build_bank(easy=10, medium=10, hard=10)
+        draws: dict[int, int] = {}
+        for _ in range(120):
+            for question in _sel.select_balanced_questions(bank, 5, draw_counts=draws):
+                draws[question.id] = draws.get(question.id, 0) + 1
+        assert len(draws) == len(bank)
+        average = sum(draws.values()) / len(draws)
+        assert max(draws.values()) - min(draws.values()) <= average * 1.2, sorted(draws.values())
+    finally:
+        _sel.use_random_source(_sel._SYS_RANDOM)
 
 
 def test_small_bank_does_not_crash() -> None:

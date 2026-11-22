@@ -45,6 +45,24 @@ from typing import Any, Protocol
 
 _SYS_RANDOM = secrets.SystemRandom()
 
+#: موتورِ تصادفِ قابلِ جای‌گزینی. تولید همیشه از `secrets.SystemRandom`
+#: استفاده می‌کند (غیرقابل‌پیش‌بینی)؛ تست‌ها می‌توانند با
+#: `use_random_source(random.Random(seed))` نتیجه را بازتولیدپذیر کنند تا
+#: «تستِ آماریِ گاهی‌شکست» نداشته باشیم.
+_RNG: Any = _SYS_RANDOM
+
+
+def use_random_source(rng: Any) -> None:
+    """جای‌گزینیِ موتورِ تصادف (فقط برای تست/بازتولید).
+
+    چرا لازم شد؟ تستِ یکنواختیِ توزیع روی `SystemRandom` واقعاً غیرقطعی است و
+    در CI (با ترتیبِ متفاوتِ اجرا) گاهی می‌شکست. تصادفِ غیرقابلِ‌پیش‌بینی برای
+    **تولید** درست است، ولی برای **تستِ یک تضمینِ آماری** باید دانه داد.
+    """
+    global _RNG
+    _RNG = rng
+
+
 # سهم هر سطح دشواری از آزمون. جمع کسرها لازم نیست دقیقاً ۱ باشد؛
 # تابع `_apportion` باقی‌مانده را بر اساس بزرگ‌ترین باقی‌مانده توزیع می‌کند.
 _DIFFICULTY_WEIGHTS: dict[str, float] = {
@@ -97,11 +115,24 @@ def _weighted_pick[Q: _QuestionLike](pool: Sequence[Q], draw_counts: dict[int, i
     همین ترتیب. این «کشش» تضمین می‌کند توزیع در طول مسابقه یکنواخت شود
     بدون اینکه انتخاب قابل پیش‌بینی شود.
     """
+    # ── چرا دو مرحله‌ای؟ ─────────────────────────────────────────────────
+    # انتخابِ کاملِ وزنی، هر چند بار هم تکرار شود، دنبالهٔ هندسی می‌سازد و
+    # همیشه کمی ناهموار می‌ماند (سؤالِ کم‌کشش می‌تواند چند بار پشتِ‌سرِ‌هم
+    # بیاید). پس: **اول** سؤال‌های کم‌کشش‌تر را جدا می‌کنیم (کمینهٔ کشش) و
+    # **بعد** بین همان‌ها تصادفی می‌کشیم. تصادف حفظ می‌شود، ولی هیچ سؤالی
+    # نمی‌تواند بیش از یک واحد از کمینه جلو بزند.
+    counts = [int(draw_counts.get(int(q.id), 0)) for q in pool]
+    floor = min(counts)
+    # پنجرهٔ مجاز: فقط سؤال‌هایی که کشششان در کمترین «سطح» است. اگر استخر
+    # کوچک شد (همه یک‌اند) همان همه می‌مانند.
+    window = [q for q, c in zip(pool, counts, strict=True) if c <= floor]
+    if len(window) > 1:
+        return _RNG.choice(window)
     weights = [1.0 / (1.0 + float(draw_counts.get(int(q.id), 0))) * 2.0 for q in pool]
     total = sum(weights)
     if total <= 0:
-        return _SYS_RANDOM.choice(list(pool))
-    point = _SYS_RANDOM.uniform(0, total)
+        return _RNG.choice(list(pool))
+    point = _RNG.uniform(0, total)
     cursor = 0.0
     for question, weight in zip(pool, weights, strict=True):
         cursor += weight
@@ -194,7 +225,7 @@ def select_balanced_questions[Q: _QuestionLike](
         _take_from(leftover, count - len(chosen))
 
     # ترتیب نهایی سؤال‌ها هم تصادفی است تا الگوی «ساده‌ها اول» لو نرود.
-    _SYS_RANDOM.shuffle(chosen)
+    _RNG.shuffle(chosen)
     return chosen[:count]
 
 
