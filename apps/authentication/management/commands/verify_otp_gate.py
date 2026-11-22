@@ -113,9 +113,18 @@ class Command(BaseCommand):
         raise SystemExit(1)
 
     def _probe(self, keep: bool) -> bool:
-        """یک کاربرِ تأییدنشدهٔ موقت می‌سازد و ورودش به آزمون را می‌سنجد."""
+        """آیا گیتِ آزمون برای کاربرِ تأییدنشده بسته است؟
+
+        تصمیم را از **همان کلاسِ مجوزِ واقعی** می‌گیریم، نه از کدِ وضعیتِ
+        `POST /exam/start/`. دلیل: با سیاستِ خاموش یا با بانکِ سؤالِ ناقص، آن
+        درخواست می‌تواند ۲۰۰/۴۰۰/۴۰۹ بدهد و گزارش گمراه‌کننده شود. مجوز، خودِ
+        گیت است؛ هر چیزِ دیگری نویز است. درخواستِ HTTP هم زده می‌شود ولی فقط
+        برای اطلاع چاپ می‌شود.
+        """
         from apps.authentication.models import User
+        from apps.authentication.permissions import IsVerifiedParticipant
         from apps.authentication.services import issue_tokens_and_session
+        from apps.core.exceptions import ForbiddenDomainError
         from apps.mosques.models import Mosque
 
         phone = "09000000000"
@@ -136,10 +145,30 @@ class Command(BaseCommand):
             is_phone_verified=False,
         )
         try:
+            from rest_framework.test import APIRequestFactory, force_authenticate
+
+            from apps.exam.views import ExamStartAPIView
+
+            request = APIRequestFactory().post("/api/v1/exam/start/")
+            force_authenticate(request, user=user)
+            request.user = user
+            try:
+                allowed = IsVerifiedParticipant().has_permission(request, ExamStartAPIView())
+                blocked = not allowed
+                code_ = ""
+            except ForbiddenDomainError as exc:
+                blocked = True
+                code_ = getattr(exc, "code", "") or ""
+
+            verdict = (
+                self.style.SUCCESS("  ✔ بسته است — کاربرِ تأییدنشده به آزمون نمی‌رسد")
+                if blocked
+                else self.style.WARNING("  ⚠ باز است — با سیاستِ فعلی طبیعی است، ولی امن نیست")
+            )
+            self.stdout.write(f"  گیتِ مجوز ⇒ {verdict}" + (f"  (code={code_})" if code_ else ""))
+
+            # اطلاعی: همان مسیرِ HTTP که کاربرِ واقعی می‌رود.
             tokens = issue_tokens_and_session(user=user, request=None)
-            # `testserver` در ALLOWED_HOSTS تولید نیست؛ از همان هاستِ واقعیِ
-            # سایت استفاده می‌کنیم تا این آزمون دقیقاً همان مسیری باشد که
-            # کاربرِ واقعی می‌رود (وگرنه ۴۰۰ِ DisallowedHost ما را گمراه می‌کند).
             host = next(
                 (
                     h
@@ -148,20 +177,14 @@ class Command(BaseCommand):
                 ),
                 "localhost",
             )
-            client = Client(HTTP_HOST=host)
-            res = client.post(
+            res = Client(HTTP_HOST=host).post(
                 "/api/v1/exam/start/",
                 HTTP_AUTHORIZATION=f"Bearer {tokens['access']}",
                 content_type="application/json",
                 data="{}",
             )
-            body = res.content.decode("utf-8", "replace")[:200]
-            self.stdout.write(f"  POST /exam/start/ با کاربرِ تأییدنشده ⇒ HTTP {res.status_code}")
-            blocked = res.status_code in {403, 401}
-            if blocked:
-                self.stdout.write(self.style.SUCCESS("  ✔ مسدود شد (انتظار)  ") + body[:120])
-            else:
-                self.stdout.write(self.style.ERROR("  ✘ وارد شد، در حالی که نباید!  ") + body[:120])
+            body = res.content.decode("utf-8", "replace")
+            self.stdout.write(f"  (اطلاعی) POST /exam/start/ ⇒ HTTP {res.status_code} {body[:110]}")
             return blocked
         finally:
             if not keep:

@@ -11,6 +11,7 @@ from io import StringIO
 
 import pytest
 from django.core.management import call_command
+from django.test import override_settings
 
 from apps.audit_logs.choices import AuditAction
 from apps.audit_logs.services import record_audit_log
@@ -30,18 +31,35 @@ def make_valid_national_id(seed: int) -> str:
 
 
 @pytest.mark.django_db
-def test_verify_otp_gate_blocks_unverified_user() -> None:
-    """دستور باید اعلامِ موفقیت کند فقط اگر آزمون برای کاربرِ تأییدنشده ۴۰۳ شود."""
-    mosque = Mosque.objects.create(name="مسجد آزمون", is_active=True)
+def test_verify_otp_gate_reports_open_gate_when_policy_is_off() -> None:
+    """با سیاستِ فعالِ فعلی (بدونِ کد) درگاه «باز» است و دستور باید همین را بگوید.
+
+    انتظارِ «مسدود» این‌جا غلط است و خودش گمراه‌کننده می‌شد؛ ابزار باید وضعیتِ
+    واقعی را بگوید، نه آن‌چه ما دوست داریم.
+    """
+    Mosque.objects.create(name="مسجد آزمون", is_active=True)
     out = StringIO()
-    call_command("verify_otp_gate", stdout=out)
+    with pytest.raises(SystemExit):
+        call_command("verify_otp_gate", stdout=out)
 
-    assert "مسدود شد" in out.getvalue()
-    assert "درگاه بسته است" in out.getvalue()
-
+    text = out.getvalue()
+    assert "BALE_OTP_MANDATORY = False" in text
+    # با سیاستِ خاموش، گیت باز است و دستور باید صادقانه همین را بگوید.
+    assert "باز است" in text
     # کاربرِ موقتِ دستور نباید باقی بماند.
     assert not User.objects.filter(phone_number="09000000000").exists()
-    del mosque
+
+
+@pytest.mark.django_db
+@override_settings(BALE_OTP_MANDATORY=True)
+def test_verify_otp_gate_confirms_block_when_policy_is_on() -> None:
+    """با روشن‌کردنِ سیاست، همان دستور باید «مسدود» را تأیید کند (۴۰۳)."""
+    Mosque.objects.create(name="مسجد آزمون ۲", is_active=True)
+    out = StringIO()
+    call_command("verify_otp_gate", stdout=out)
+    text = out.getvalue()
+    assert "بسته است" in text
+    assert "درگاه بسته است" in text
 
 
 @pytest.mark.django_db

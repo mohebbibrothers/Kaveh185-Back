@@ -179,12 +179,20 @@ class ParticipantRegisterAPIView(APIView):
                 "access": tokens["access"],
                 "refresh": tokens["refresh"],
                 "session_uid": tokens["session_uid"],
+                # `is_phone_verified` صریح می‌آید تا فرانت بداند آیا این نشست
+                # با کد ساخته شده یا مستقیم — و پیامِ «کد آمد/نیامد» را صادقانه
+                # بگوید، نه ادعایی که پشتش چیزی نیست.
+                "is_phone_verified": user.is_phone_verified,
                 "user": UserProfileOutputSerializer(user).data,
                 "exam_eligibility": eligibility,
             },
             status_code=http_status,
             code="registered" if result["created_new"] else "authenticated",
-            message="ثبت‌نام شما با موفقیت انجام شد. اکنون می‌توانید وارد آزمون شوید.",
+            message=(
+                "ثبت‌نام شما با موفقیت انجام شد. اکنون می‌توانید وارد آزمون شوید."
+                if result["created_new"]
+                else "خوش آمدید؛ اطلاعاتِ شما بازیابی شد و می‌توانید وارد آزمون شوید."
+            ),
         )
         return _attach_auth_cookies(resp, tokens)
 

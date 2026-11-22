@@ -288,10 +288,13 @@ def register_or_enter_participant(
             }
 
         # تا این‌جا فقط وقتی می‌رسیم که تأیید لازم نبوده یا قبلاً انجام شده.
-        if not user.is_phone_verified:  # pragma: no cover - با BALE_OTP_MANDATORY+بله نمی‌رسد
-            user.is_phone_verified = True
-            user.save(update_fields=["is_phone_verified", "updated_at"])
-
+        #
+        # ⚠️ این‌جا پرچمِ `is_phone_verified` را **ست نمی‌کنیم**. درسِ آزمونِ
+        # میدانی: ست‌کردنِ خودکارش، کاربرِ تأییدنشده را برای همیشه «تأییدشده»
+        # می‌کرد و بعد از روشن‌کردنِ دوبارهٔ سیاستِ کد، همان حساب‌ها بی‌کد
+        # وارد می‌شدند. پرچم فقط از مسیرِ واقعیِ `verify_otp_and_issue_session`
+        # ست می‌شود؛ سیاستِ «فعلاً بدونِ کد» را همان `BALE_OTP_MANDATORY=False`
+        # اعمال می‌کند، نه دستکاریِ داده.
         tokens = issue_tokens_and_session(user=user, request=request)
         record_audit_log(
             action=AuditAction.USER_LOGGED_IN,
@@ -299,7 +302,11 @@ def register_or_enter_participant(
             resource_id=user.pk,
             user=user,
             request=request,
-            extra_data={"mode": "fast_direct", "created_new": created_new},
+            extra_data={
+                "mode": "direct_session",
+                "created_new": created_new,
+                "otp_mandatory": bool(getattr(settings, "BALE_OTP_MANDATORY", False)),
+            },
         )
         return {
             "otp_required": False,
@@ -307,6 +314,7 @@ def register_or_enter_participant(
             "user": user,
             "otp": None,
             "tokens": tokens,
+            "is_phone_verified": user.is_phone_verified,
         }
 
 

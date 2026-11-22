@@ -6,6 +6,7 @@ from io import StringIO
 
 import pytest
 from django.core.management import call_command
+from django.test import override_settings
 from rest_framework.test import APIClient
 
 from apps.authentication.models import User
@@ -36,25 +37,19 @@ def test_participant_registration_uniqueness_and_resume_flow(
         },
         format="json",
     )
-    # ⚠️ تصمیمِ امنیتیِ جدید: ثبت‌نام بدونِ تأییدِ شماره نشست نمی‌دهد.
-    # پیش‌تر با `require_otp_before_exam=False` بلافاصله توکن صادر می‌شد و هر
-    # کسی با شمارهٔ دیگری می‌توانست وارد آزمون شود.
-    assert reg_resp.status_code == 202
+    # سیاستِ فعال (آزمونِ میدانی): کاربر اطلاعات را می‌زند و **مستقیم** نشست
+    # می‌گیرد؛ دکمهٔ ورود به آزمون برایش فعال می‌شود. کدِ تأیید خاموش است.
+    assert reg_resp.status_code == 201
     reg_data = reg_resp.json()["data"]
     assert reg_data["is_new_user"] is True
-    assert reg_data["otp_required"] is True
-    assert "tokens" not in reg_data
+    assert reg_data["otp_required"] is False
+    assert reg_data["access"]
     assert reg_data["user"]["phone_number"] == "09123456789"
 
-    # حالا همان کد را بگیریم و تأیید کنیم ⇒ نشست صادر می‌شود.
-    debug_code = reg_data["otp"].get("debug_otp_code") or reg_data["otp"].get("debug_code")
-    if debug_code:
-        verify_resp = api_client.post(
-            "/api/v1/auth/otp/verify/",
-            data={"phone_number": "09123456789", "code": debug_code},
-            format="json",
-        )
-        assert verify_resp.status_code in {200, 201}
+    # ⚠️ مهم: نشستِ مستقیم نباید پرچمِ «شماره تأییدشده» را جعل کند. این همان
+    # تله‌ای بود که بعداً کاربر را بی‌کد وارد آزمون می‌کرد.
+    assert reg_data["is_phone_verified"] is False
+    assert User.objects.get(phone_number="09123456789").is_phone_verified is False
     assert reg_data["user"]["birth_date_jalali"] == "1382/06/15"
     assert reg_data["user"]["mosque_id"] == mosque.id
 
@@ -151,8 +146,8 @@ def test_otp_request_verify_and_legacy_signup_deprecation(
         },
         format="json",
     )
-    # مسیر قدیمی هم همان سیاستِ امنیتی را دارد: ۲۰۲ + کد، نه نشستِ بی‌تأیید.
-    assert legacy_resp.status_code == 202
+    # مسیرِ قدیمی (deprecated) هم همان قرارداد را دارد: نشستِ مستقیم.
+    assert legacy_resp.status_code == 201
     assert legacy_resp["Deprecation"] == "true"
     assert "Sunset" in legacy_resp
 
@@ -361,6 +356,7 @@ def test_password_login_refresh_logout_admin_actions_and_risk_signals(
     cfg.save()
 
 
+@override_settings(BALE_OTP_MANDATORY=True)
 def test_registration_never_issues_session_without_phone_verification(
     api_client: APIClient,
     seeded_mosques: list[Mosque],
@@ -400,6 +396,7 @@ def test_registration_never_issues_session_without_phone_verification(
     assert user.is_phone_verified is False
 
 
+@override_settings(BALE_OTP_MANDATORY=True)
 def test_unverified_user_cannot_start_exam(
     api_client: APIClient, seeded_mosques: list[Mosque]
 ) -> None:
