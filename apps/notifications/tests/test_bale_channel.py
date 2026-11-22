@@ -1648,3 +1648,45 @@ def test_record_bale_delivery_never_raises(monkeypatch: Any) -> None:
         side_effect=RuntimeError("db down"),
     ):
         record_bale_delivery(chat_id=1, handled="start", replied=True)
+
+
+@pytest.mark.django_db
+def test_doctor_nudge_detects_delivery(settings: Any) -> None:
+    """`--nudge` بازثبت می‌کند و اگر آپدیتی رسید، همان را شاهد می‌گیرد."""
+    from apps.notifications.models import BaleDeliveryLog
+
+    settings.BALE_BOT_TOKEN = "t"
+    settings.BALE_WEBHOOK_SECRET = "s"
+    settings.BALE_WEBHOOK_URL = "https://api.kaveh185.ir/x/"
+
+    def fake_api(method: str, payload: object = None, **_: object) -> dict:
+        if method == "setWebhook":
+            # بله پس از بازثبت، اولین آپدیتِ معلق را تحویل می‌دهد.
+            BaleDeliveryLog.objects.create(chat_id=3, handled="start", replied=True)
+        return {"ok": True, "result": True}
+
+    command = _doctor()
+    ticks = iter([0.0, 1.0, 200.0])
+    with (
+        patch("apps.notifications.bale._api", side_effect=fake_api),
+        patch("time.monotonic", lambda: next(ticks)),
+        patch("time.sleep", lambda *_: None),
+    ):
+        command._nudge("https://api.kaveh185.ir/x/")
+    assert "بله تحویل داد" in command.stdout.getvalue()  # type: ignore[attr-defined]
+
+
+@pytest.mark.django_db
+def test_doctor_nudge_reports_timeout(settings: Any) -> None:
+    """اگر چیزی نرسید، می‌گوید پیامِ تازه بفرستید (نه اینکه همه‌چیز را سالم بداند)."""
+    settings.BALE_BOT_TOKEN = "t"
+    settings.BALE_WEBHOOK_SECRET = "s"
+    command = _doctor()
+    ticks = iter([0.0, 1.0, 200.0])
+    with (
+        patch("apps.notifications.bale._api", return_value={"ok": True, "result": True}),
+        patch("time.monotonic", lambda: next(ticks)),
+        patch("time.sleep", lambda *_: None),
+    ):
+        command._nudge("https://api.kaveh185.ir/x/")
+    assert "هیچ آپدیتی نفرستاد" in command.stdout.getvalue()  # type: ignore[attr-defined]

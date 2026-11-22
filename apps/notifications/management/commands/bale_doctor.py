@@ -56,6 +56,14 @@ class Command(BaseCommand):
             help="پیش از سنجش، وب‌هوک را با همین تنظیمات بازثبت کن (بدونِ دورریختنِ صف).",
         )
         parser.add_argument(
+            "--nudge",
+            action="store_true",
+            help=(
+                "از سمتِ خودِ بله یک آپدیتِ واقعی به وب‌هوک بفرست (deleteWebhook + setWebhook) "
+                "تا معلوم شود بله اصلاً تحویل می‌دهد یا نه — بدونِ دخالتِ کاربر."
+            ),
+        )
+        parser.add_argument(
             "--deliveries",
             type=int,
             default=0,
@@ -74,6 +82,10 @@ class Command(BaseCommand):
         url = self._url(str(options["url"]))
         verdicts: list[str] = []
         info: dict = {}
+
+        if options.get("nudge"):
+            self._nudge(url)
+            return
 
         if options.get("deliveries"):
             self._deliveries(int(options["deliveries"]))
@@ -115,6 +127,38 @@ class Command(BaseCommand):
 
         if options["watch"]:
             self._watch(int(options["watch"]))
+
+    def _nudge(self, url: str) -> None:
+        """بله را وادار می‌کند همین حالا یک آپدیت به وب‌هوکِ ما تحویل بدهد.
+
+        چرا این کلیدِ تشخیص است؟ تا وقتی بدانیم بله **هیچ** تحویلی نمی‌کند،
+        نمی‌توان بین «کاربر پیام نفرستاده» و «بله تحویل نمی‌دهد» فرق گذاشت.
+        `deleteWebhook` سپس `setWebhook` (بدونِ دورریختنِ صف) همان کاری است که
+        کلاینت‌های رسمی برای بیدارکردن انجام می‌دهند؛ اگر پس از آن هم دفتر خالی
+        بماند، مشکل قطعاً سمتِ بله/کاربر است نه کدِ ما.
+        """
+        from apps.notifications.models import BaleDeliveryLog
+
+        self._title("بیدارکردنِ وب‌هوک از سمتِ بله (--nudge)")
+        before = BaleDeliveryLog.objects.count()
+        self._reregister(url)
+        deadline = time.monotonic() + 60
+        self.stdout.write("  تا ۶۰ ثانیه منتظرِ رسیدنِ آپدیت از بله می‌مانیم…")
+        while time.monotonic() < deadline:
+            if BaleDeliveryLog.objects.count() > before:
+                last = BaleDeliveryLog.objects.all()[0]
+                self._line(
+                    True, f"بله تحویل داد! {last.handled} · پاسخ={'✓' if last.replied else '✗'}"
+                )
+                self.stdout.write("")
+                self.stdout.write(self.style.SUCCESS("حکم: زنجیرهٔ بله کامل است."))
+                return
+            time.sleep(5)
+        self._line(
+            False,
+            "بله در این ۶۰ ثانیه هیچ آپدیتی نفرستاد — یعنی ممکن است آپدیتِ معلقی "
+            "در صف نبوده باشد. یک پیامِ تازه در بله بفرستید و `--watch 120` بزنید.",
+        )
 
     def _deliveries(self, limit: int) -> None:
         """فهرستِ آخرین تحویل‌ها — «آیا بله اصلاً چیزی فرستاد؟»"""
