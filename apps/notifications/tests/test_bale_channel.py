@@ -1848,3 +1848,151 @@ def test_worker_retries_on_api_error_then_exits(
     assert "خطای تماس با بله" in out.getvalue()
     assert "به سقفِ زمان رسیدم" in out.getvalue()  # خروجِ تمیز، نه حلقهٔ بی‌پایان
     assert sleeps == [1.0]  # بازگشتِ نمایی پیش از رسیدن به سقفِ زمانی
+
+
+def test_worker_http_timeout_exceeds_poll_timeout(
+    settings: Any, tmp_path: Any, monkeypatch: Any
+) -> None:
+    """مهلتِ HTTP باید از مهلتِ long-polling بیشتر باشد، وگرنه هر تماس Timeout می‌شود.
+
+    باگِ واقعی: `_api` پیش‌فرض ۶ ثانیه بود و `getUpdates` با `timeout=25`
+    اجرا می‌شد ⇒ بله هنوز منتظرِ پیام بود که ما قطع می‌کردیم و حلقه فقط
+    «TimeoutError» می‌چاپد، بی‌آنکه هیچ پیامی خوانده شود.
+    """
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    _worker_module(tmp_path, monkeypatch)
+    settings.BALE_BOT_TOKEN = "t"
+    seen: list[float] = []
+
+    def fake_api(method: str, payload: object = None, **kwargs: Any) -> dict:
+        seen.append(float(kwargs.get("timeout") or 0))
+        return {"ok": True, "result": []}
+
+    import itertools
+
+    ticks = itertools.count(0, 1)
+    monkeypatch.setattr("time.monotonic", lambda: float(next(ticks, 1000)))
+    with patch("apps.notifications.management.commands.bale_worker._api", side_effect=fake_api):
+        call_command("bale_worker", "--once", "--force", "--poll-timeout", "25", stdout=StringIO())
+    assert seen and seen[0] >= 25  # مهلتِ HTTP از مهلتِ polling بیشتر است
+
+
+def test_worker_hints_on_timeout(settings: Any, tmp_path: Any, monkeypatch: Any) -> None:
+    """اگر مهلت تمام شد، راهنمای عملی بدهد (نه فقط متنِ خطا)."""
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    from apps.notifications.bale import BaleError
+
+    _worker_module(tmp_path, monkeypatch)
+    settings.BALE_BOT_TOKEN = "t"
+    import itertools
+
+    ticks = itertools.count(0, 1)
+    monkeypatch.setattr("time.monotonic", lambda: float(next(ticks, 1000)))
+    monkeypatch.setattr("time.sleep", lambda *_: None)
+    out = StringIO()
+    # زمانِ ثابت ⇒ سقفِ زمانی قبل از یک دورِ خطا فعال نمی‌شود.
+    monkeypatch.setattr("time.monotonic", lambda: 0.0)
+    calls = {"n": 0}
+
+    def once_then_stop(*args: Any, **kwargs: Any) -> Any:
+        calls["n"] += 1
+        if calls["n"] > 1:
+            raise SystemExit
+        raise BaleError("ارتباط با بله برقرار نشد (TimeoutError).")
+
+    with (
+        patch(
+            "apps.notifications.management.commands.bale_worker._api", side_effect=once_then_stop
+        ),
+        pytest.raises(SystemExit),
+    ):
+        call_command("bale_worker", "--force", stdout=out)
+    assert "--poll-timeout 5" in out.getvalue()
+
+
+def test_keepalive_starts_service_when_dead(settings: Any, tmp_path: Any, monkeypatch: Any) -> None:
+    """اگر سرویس مرده است، `keepalive` آن را در پس‌زمینه بالا می‌آورد."""
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    _worker_module(tmp_path, monkeypatch)  # مسیرهای نشانِ زندگی به tmp
+    started: list[list[str]] = []
+
+    class FakeProc:
+        pid = 4242
+
+    def fake_popen(command: list[str], **kwargs: Any) -> FakeProc:
+        started.append(command)
+        return FakeProc()
+
+    out = StringIO()
+    with patch("subprocess.Popen", side_effect=fake_popen):
+        call_command("keepalive", stdout=out)
+    assert started and "bale_worker" in started[0]
+    assert "بالا آمد" in out.getvalue()
+
+
+def test_keepalive_is_silent_when_alive(settings: Any, tmp_path: Any, monkeypatch: Any) -> None:
+    """سرویسِ زنده ⇒ هیچ کارِ اضافه‌ای نکن (بی‌صدا در کران)."""
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    module = __import__("apps.notifications.management.commands.bale_worker", fromlist=["x"])
+    monkeypatch.setattr(module, "HEARTBEAT_FILE", tmp_path / "hb.json")
+    module._heartbeat(0)
+    out = StringIO()
+    with patch("subprocess.Popen") as popen:
+        call_command("keepalive", stdout=out)
+    assert out.getvalue() == ""
+    popen.assert_not_called()
+
+
+def test_keepalive_install_writes_single_cron_line(settings: Any, monkeypatch: Any) -> None:
+    """`--install` خطِ نگهبان را یک‌بار می‌نویسد (تکراری نمی‌سازد)."""
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    sent: list[str] = []
+
+    class Res:
+        returncode = 0
+        stdout = "0 * * * * echo already\nexisting * * * * * keep\n"
+
+    def fake_run(command: list[str], **kwargs: Any) -> Res:
+        if command[-1] == "-":
+            sent.append(str(kwargs.get("input") or ""))
+        return Res()
+
+    with (
+        patch("subprocess.run", side_effect=fake_run),
+        patch("subprocess.Popen", return_value=type("P", (), {"pid": 1})()),
+    ):
+        call_command("keepalive", "--install", stdout=StringIO())
+    assert sent, "crontab نوشته نشد"
+    content = sent[0]
+    assert "0 * * * * echo already" in content  # کران‌های دیگر دست‌نخورده می‌مانند
+    assert content.count("# kaveh185-bale-worker-keepalive") == 1  # خطِ خودمان فقط یک‌بار
+
+
+def test_keepalive_uninstall_removes_marker(settings: Any) -> None:
+    """`--uninstall` فقط خطِ خودمان را برمی‌دارد."""
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    class Res:
+        returncode = 0
+        stdout = "0 1 * * * other\n*/2 * * * * x keepalive # kaveh185-bale-worker-keepalive\n"
+
+    with patch("subprocess.run", return_value=Res()) as runner:
+        call_command("keepalive", "--uninstall", stdout=StringIO())
+    assert runner.called

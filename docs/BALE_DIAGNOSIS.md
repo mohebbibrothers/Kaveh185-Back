@@ -104,6 +104,7 @@ crontab -e
 | آزمون | نتیجه |
 |---|---|
 | `--nudge` (تحویلِ اجباری از بله) | ✗ بله هیچ آپدیتی نفرستاد |
+| `bale_worker` (نسخهٔ اول) | ✗ `TimeoutError` پشتِ‌سرِ‌هم — **باگِ ما**: مهلتِ HTTP (۶ث) کمتر از مهلتِ long-polling (۲۵ث) بود |
 | کنترلِ کران (`bale_inbox --verbose`) | ✓ **۱۷ آپدیت خواند** و ۵ پاسخ با ✓ ارسال شد |
 | دفترِ تحویل | ✓ `polling · start · پاسخ=✓` |
 
@@ -127,6 +128,27 @@ sudo systemctl enable --now bale_worker && sudo journalctl -u bale_worker -f
 # اگر Supervisor دارید (cPanel):
 cp deploy/cpanel/bale_worker_supervisor.conf ~/supervisord.conf.d/
 supervisorctl reread && supervisorctl update
+```
+
+### روی این هاست `sudo` / systemd / supervisor وجود ندارد
+
+پس سرویس را با خودِ پروژه زنده نگه می‌داریم (کران + `setsid`/`nohup`):
+
+```bash
+$PY manage.py keepalive --install    # خطِ کرانِ هر ۲ دقیقه + اجرای فوری
+$PY manage.py keepalive --status     # (یا) bale_worker --status
+$PY manage.py keepalive --stop       # توقفِ کامل (بازگشت به کرانِ ساده)
+```
+
+`keepalive` بی‌صداست وقتی سرویس زنده است، و اگر مرده باشد با `start_new_session`
+(یعنی `setsid`) بالا می‌آوردش تا به نشستِ شل وابسته نباشد. لاگ:
+`~/kaveh185_bale_worker.log`.
+
+### اگر روی هاستی هستید که systemd دارد
+
+```bash
+sudo cp deploy/cpanel/bale_worker.service /etc/systemd/system/
+sudo systemctl enable --now bale_worker
 ```
 
 و یک خط کران فقط به‌عنوانِ **نجات‌بخش** (اگر سرویس مُرد، حداکثر یک دقیقه بعد):

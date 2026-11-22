@@ -220,13 +220,24 @@ class Command(BaseCommand):
                 break
 
             try:
+                # ⚠️ مهلتِ HTTP **باید** از مهلتِ سرور بیشتر باشد، وگرنه هر بار
+                # `TimeoutError` می‌گیریم: بله تا `timeout` ثانیه منتظرِ پیامِ
+                # تازه می‌ماند و ما زودتر قطع می‌کنیم — همان چیزی که در آزمونِ
+                # اول رخ داد. یک ثانیه هم برای تأخیرِ شبکه اضافه می‌شود.
                 res = _api(
                     "getUpdates",
                     {"offset": offset, "limit": 100, "timeout": int(options["poll_timeout"])},
+                    timeout=self._http_timeout(int(options["poll_timeout"])),
                 )
             except BaleError as exc:
                 if not options["quiet"]:
-                    self.stdout.write(self.style.ERROR(f"خطای تماس با بله: {exc}"))
+                    hint = ""
+                    if "TimeoutError" in str(exc):
+                        hint = (
+                            " ⇒ مهلتِ شبکه/پروکسی کمتر از مهلتِ long-polling است؛ "
+                            "با `--poll-timeout 5` امتحان کنید."
+                        )
+                    self.stdout.write(self.style.ERROR(f"خطای تماس با بله: {exc}{hint}"))
                 time.sleep(backoff)
                 backoff = min(backoff * 2, 30.0)
                 continue
@@ -241,6 +252,16 @@ class Command(BaseCommand):
 
             if options["once"]:
                 break
+
+    @staticmethod
+    def _http_timeout(poll_timeout: int) -> float:
+        """مهلتِ HTTPِ هر تماس: کمی بیشتر از مهلتِ long-pollingِ سرور.
+
+        ریاضیِ ساده، اثرِ بزرگ: اگر `poll_timeout=25` و مهلتِ HTTP هم ۶ ثانیه
+        باشد (پیش‌فرضِ `_api`)، هر تماس قبل از رسیدنِ پاسخ قطع می‌شود و حلقه
+        فقط «TimeoutError» می‌چاپد — بی‌آنکه هیچ پیامی خوانده شود.
+        """
+        return float(max(poll_timeout, 0) + 10)
 
     def _consume(self, updates: list[Any], offset: int, options: dict[str, Any]) -> int:
         """هر آپدیت را پردازش می‌کند و offset را جلو می‌برد (برگشتِ offsetِ تازه)."""
