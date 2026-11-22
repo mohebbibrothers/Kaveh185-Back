@@ -13,11 +13,51 @@ from rest_framework.test import APIClient
 from apps.exam.choices import ExamAttemptStatus
 from apps.exam.models import ExamAttempt
 from apps.mosques.models import Mosque
-from apps.mosques.services import (
-    increment_mosque_completed_exam_count,
-    increment_mosque_registered_count,
-)
 from tests.factories import create_test_participant
+
+
+def _finish_exams(*, mosque: Mosque, count: int, seq_start: int = 700) -> None:
+    """ساختِ `count` کارنامهٔ **واقعیِ پایان‌یافته** برای یک مسجد.
+
+    از این به بعد شمارنده‌ها «کشِ کارایی» هستند و جدول از شمارشِ زندهٔ
+    `ExamAttempt` می‌خواند؛ پس تستی که فقط عددِ شمارنده را بالا ببرد، چیزی را
+    که کاربر می‌بیند نمی‌سنجد. این کمکی، همان دادهٔ واقعی را می‌سازد.
+    """
+    for i in range(count):
+        seq = seq_start + mosque.pk * 100 + i
+        user = create_test_participant(seq=seq, mosque=mosque)
+        ExamAttempt.objects.create(
+            user=user,
+            mosque=mosque,
+            tracking_code=f"TRK-FIN-{seq}",
+            status=ExamAttemptStatus.COMPLETED,
+            expires_at=timezone.now() + timedelta(minutes=5),
+        )
+
+
+def _seed_leaderboard_rows(api_client: APIClient, counts: list[int]) -> list[dict]:
+    """پرکردنِ جدول با دادهٔ **واقعی** و برگرداندنِ ردیف‌های رهبری.
+
+    چرا نه `UPDATE` روی شمارنده؟ چون شمارنده‌ها حالا کشِ کارایی‌اند و جدول از
+    شمارشِ زنده می‌خواند (منبعِ حقیقت). تستی که شمارنده را دستی بالا ببرد،
+    رفتارِ واقعی را نمی‌سنجد و خودش می‌شکند. پس برای هر مسجد به تعدادِ لازم
+    کارنامهٔ واقعیِ پایان‌یافته می‌سازیم.
+    """
+    call_command("seed_mosques", stdout=StringIO())
+    mosques = list(Mosque.objects.filter(is_active=True).order_by("display_order", "id"))
+    seq = 700
+    for mosque, count in zip(mosques, counts, strict=False):
+        for _ in range(count):
+            seq += 1
+            user = create_test_participant(seq=seq, mosque=mosque)
+            ExamAttempt.objects.create(
+                user=user,
+                mosque=mosque,
+                tracking_code=f"TRK-LB-{seq}",
+                status=ExamAttemptStatus.COMPLETED,
+                expires_at=timezone.now() + timedelta(minutes=5),
+            )
+    return api_client.get("/api/v1/mosques/leaderboard/").json()["data"]["leaderboard"]
 
 
 @pytest.mark.django_db()
@@ -36,13 +76,9 @@ def test_seed_17_mosques_dropdown_and_live_leaderboard(
 
     # افزایش تعداد مشارکت در آزمون برای مسجد شماره ۵ تا به رتبه ۱ جدول صعود کند
     target_mosque = Mosque.objects.get(code="MSQ-05")
-    increment_mosque_registered_count(target_mosque.id)
-    for _ in range(4):
-        increment_mosque_completed_exam_count(target_mosque.id)
-
+    _finish_exams(mosque=target_mosque, count=4)
     second_mosque = Mosque.objects.get(code="MSQ-02")
-    for _ in range(2):
-        increment_mosque_completed_exam_count(second_mosque.id)
+    _finish_exams(mosque=second_mosque, count=2)
 
     lb_resp = api_client.get("/api/v1/mosques/leaderboard/")
     assert lb_resp.status_code == 200
@@ -114,9 +150,8 @@ def test_leaderboard_ties_break_by_persian_alphabet_not_display_order(
     amir = Mosque.objects.get(code="MSQ-02")  # نام: مسجد حضرت امیرالمؤمنین
     Mosque.objects.filter(pk=zarrah.pk).update(display_order=99)
     Mosque.objects.filter(pk=amir.pk).update(display_order=1)
-    for _ in range(3):
-        increment_mosque_completed_exam_count(zarrah.id)
-        increment_mosque_completed_exam_count(amir.id)
+    _finish_exams(mosque=zarrah, count=3)
+    _finish_exams(mosque=amir, count=3)
 
     data = api_client.get("/api/v1/mosques/leaderboard/").json()["data"]
     board = data["leaderboard"]
@@ -137,7 +172,7 @@ def test_leaderboard_zero_participation_rows_get_no_rank_and_alpha_order(
 ) -> None:
     """مساجدِ بی‌مشارکت رتبهٔ ۰ می‌گیرند و بین خودشان الفبایی مرتب‌اند."""
     call_command("seed_mosques", stdout=StringIO())
-    increment_mosque_completed_exam_count(Mosque.objects.get(code="MSQ-09").id)
+    _finish_exams(mosque=Mosque.objects.get(code="MSQ-09"), count=1)
 
     data = api_client.get("/api/v1/mosques/leaderboard/").json()["data"]
     board = data["leaderboard"]
@@ -207,12 +242,7 @@ def test_simulate_leaderboard_reset_returns_to_starting_line(api_client: APIClie
 @pytest.mark.django_db()
 def test_leaderboard_exposes_tie_flags(api_client: APIClient) -> None:
     """`is_tied`/`tied_count` دقیقاً همان گروهِ هم‌امتیاز را می‌گویند."""
-    call_command("seed_mosques", stdout=StringIO())
-    mosques = list(Mosque.objects.filter(is_active=True).order_by("display_order", "id"))
-    for mosque, count in zip(mosques, [14, 11, 11, 3, 3, 3], strict=False):
-        Mosque.objects.filter(pk=mosque.pk).update(completed_exam_count=count)
-
-    rows = api_client.get("/api/v1/mosques/leaderboard/").json()["data"]["leaderboard"]
+    rows = _seed_leaderboard_rows(api_client, [14, 11, 11, 3, 3, 3])
 
     first = rows[0]
     assert first["rank"] == 1
@@ -234,12 +264,7 @@ def test_rank_uses_shared_place_not_row_number(api_client: APIClient) -> None:
     با قاعدهٔ ۱۲۲۴ رتبه‌ها ۱، ۲، ۲، ۴ می‌شد و جدول هرگز مدالِ برنز نداشت،
     درحالی‌که سکوی صفحه سه جایگاه دارد. این تست همان تناقض را قفل می‌کند.
     """
-    call_command("seed_mosques", stdout=StringIO())
-    mosques = list(Mosque.objects.filter(is_active=True).order_by("display_order", "id"))
-    for mosque, count in zip(mosques, [14, 11, 11, 8, 8, 3], strict=False):
-        Mosque.objects.filter(pk=mosque.pk).update(completed_exam_count=count)
-
-    rows = api_client.get("/api/v1/mosques/leaderboard/").json()["data"]["leaderboard"]
+    rows = _seed_leaderboard_rows(api_client, [14, 11, 11, 8, 8, 3])
     assert [r["rank"] for r in rows[:6]] == [1, 2, 2, 3, 3, 4]
     # سطح‌ها هم با جایگاه هم‌خوان‌اند: جایگاه‌های ۲ و ۳ نقره‌ای‌اند
     assert {r["tier"] for r in rows[1:5]} == {"silver"}
@@ -249,7 +274,7 @@ def test_rank_uses_shared_place_not_row_number(api_client: APIClient) -> None:
 
 @pytest.mark.django_db()
 def test_recount_restores_counters_from_real_attempts(api_client: APIClient) -> None:
-    """`--recount` آمارِ جدول را از کارنامه‌های واقعی بازمی‌سازد، نه از صفر.
+    """`--purge` + `--recount` آمارِ جدول را از کارنامه‌های واقعی بازمی‌سازد.
 
     سناریوی واقعی: ادمین با `simulate_leaderboard` جدول را برای تست پر کرده و
     حالا می‌خواهد دادهٔ واقعی برگردد. صفرکردن پاسخ نیست (اگر مسابقه در جریان
@@ -281,8 +306,15 @@ def test_recount_restores_counters_from_real_attempts(api_client: APIClient) -> 
 
     # حالا شمارنده‌ها را با شبیه‌سازی خراب می‌کنیم
     call_command("simulate_leaderboard", "--scenario", "realistic", "--force", stdout=StringIO())
-    assert Mosque.objects.get(pk=mosque.pk).completed_exam_count == 14
+    # دادهٔ شبیه‌سازی حالا **واقعی** است، پس شمارنده هم از همان کارنامه‌ها
+    # بازشماری می‌شود: ۱۴ کارنامهٔ ساختگی + ۲ کارنامهٔ واقعیِ همین تست.
+    simulated = ExamAttempt.objects.filter(tracking_code__startswith="SIM-", mosque=mosque).count()
+    expected = simulated + 2
+    assert Mosque.objects.get(pk=mosque.pk).completed_exam_count == expected
 
+    # بیشترین واقع‌گرایی: اول دادهٔ ساختگی را پاک می‌کنیم (همان کاری که ادمین
+    # باید بکند)، بعد بازشماری. `--recount` خودش دادهٔ ساختگی را حذف نمی‌کند.
+    call_command("simulate_leaderboard", "--purge", "--force", stdout=StringIO())
     call_command("simulate_leaderboard", "--recount", "--force", stdout=StringIO())
 
     mosque.refresh_from_db()

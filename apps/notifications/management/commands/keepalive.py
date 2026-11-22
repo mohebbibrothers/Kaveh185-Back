@@ -62,6 +62,13 @@ class Command(BaseCommand):
             self._stop(options)
             return
 
+        # ── تورِ ایمنیِ شمارنده‌های مساجد ─────────────────────────────────
+        # شمارنده‌ها denormalized‌اند و هر حذف/ویرایشِ دستی در پنل می‌تواند آن‌ها
+        # را از داده جدا کند. چون این دستور هر ۲ دقیقه اجرا می‌شود، همین‌جا
+        # (بدونِ هزینهٔ محسوس: دو شمارشِ ایندکس‌دار در هر مسجد، و نوشتن فقط
+        # وقتی عدد فرق دارد) خودش را ترمیم می‌کند.
+        self._heal_mosque_counters(options)
+
         age = worker._heartbeat_age()
         if age < worker.STALE_AFTER_SECONDS:
             if options["verbose"]:
@@ -70,6 +77,19 @@ class Command(BaseCommand):
                 )
             return
         self._start(options)
+
+    def _heal_mosque_counters(self, options: dict[str, Any]) -> None:
+        """بازشمارشِ دوره‌ایِ شمارنده‌های مساجد؛ خطا هرگز نگهبان را نمی‌شکند."""
+        from apps.mosques.services import recount_mosque_stats
+
+        try:
+            result = recount_mosque_stats()
+        except Exception as exc:  # pragma: no cover - محافظِ نهایی
+            if options.get("verbose"):
+                self.stdout.write(self.style.WARNING(f"بازشمارشِ مساجد انجام نشد: {exc}"))
+            return
+        if options.get("verbose") and result["fixed"]:
+            self.stdout.write(f"✓ شمارندهٔ {result['fixed']} مسجد اصلاح شد.")
 
     # ── کارها ───────────────────────────────────────────────────────────────
     def _python(self) -> str:

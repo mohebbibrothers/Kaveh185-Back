@@ -84,15 +84,14 @@ def get_mosque_leaderboard_snapshot() -> dict[str, Any]:
             )
         )
 
-        # انتخاب بیشینهٔ شمارندهٔ denormalized و شمارش زنده برای تضمین دقت کامل
+        # ⚠️ منبعِ حقیقت = شمارشِ زنده. پیش‌تر این‌جا `max(شمارنده, زنده)` بود
+        # و منطقش «محافظِ دقت» نام داشت؛ اثرِ واقعی‌اش این بود که عددِ کهنه و
+        # بادکرده همیشه برنده شود. وقتی ادمین کاربری را حذف می‌کرد، شمارنده
+        # بالا می‌ماند و شمارشِ درست هرگز دیده نمی‌شد.
         enriched: list[dict[str, Any]] = []
         for m in mosques:
-            completed_cnt = max(
-                int(m.completed_exam_count), int(getattr(m, "live_completed", 0) or 0)
-            )
-            registered_cnt = max(
-                int(m.registered_count), int(getattr(m, "live_registered", 0) or 0)
-            )
+            completed_cnt = int(getattr(m, "live_completed", 0) or 0)
+            registered_cnt = int(getattr(m, "live_registered", 0) or 0)
             avg_score_val = round(float(getattr(m, "avg_score", 0.0) or 0.0), 2)
             avg_correct_val = round(float(getattr(m, "avg_correct", 0.0) or 0.0), 2)
             avg_duration_val = round(float(getattr(m, "avg_duration", 0.0) or 0.0), 1)

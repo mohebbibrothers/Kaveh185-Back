@@ -41,5 +41,6 @@ htmlcov/
 .env.k185-orig
 .env.k185bak
 tmp/restart.txt
+tmp/bale-worker.*
 frontend
 frontend.bak.*

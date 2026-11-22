@@ -149,6 +149,117 @@ def increment_mosque_completed_exam_count(mosque_id: int) -> None:
     )
 
 
+# ════════════════════════════════════════════════════════════════════════════
+#  شمارنده‌های denormalized: از «قابلِ اعتماد بودن» تا «خودترمیم»
+# ════════════════════════════════════════════════════════════════════════════
+#  مشکلِ واقعیِ گزارش‌شده: ادمین کاربری را از پنل حذف می‌کرد ولی شمارشِ مسجد
+#  همان عددِ قبلی می‌ماند. دو علتِ ریشه‌ای:
+#
+#  ۱) **افزایشِ کورکورانه.** `registered_count` فقط بالا می‌رفت؛ هیچ‌جای کد
+#     کاهشش نمی‌داد. حذفِ کاربر، غیرفعال‌کردنش، یا حذفِ گروهی از پنل هیچ اثری
+#     روی شمارنده نداشت.
+#  ۲) **انتخابِ `max(شمارنده، شمارشِ زنده)`.** در رنکینگ عمداً بیشینه گرفته
+#     می‌شد «برای دقت»، ولی اثرش برعکس بود: عددِ کهنه و بادکرده همیشه برنده
+#     می‌شد و شمارشِ درستِ زنده هرگز دیده نمی‌شد. یعنی خودِ محافظ، ماسکِ باگ شد.
+#
+#  ۳) **حذفِ سخت در پنل جنگو.** حذفِ معمولی در ادمین، رکورد را از دیتابیس
+#     پاک می‌کند؛ سیگنالِ `post_delete` برای مدل‌هایی که `QuerySet.delete()`
+#     می‌شوند هم اجرا نمی‌شود. پس تکیه بر سیگنال کافی نیست.
+#
+#  راه‌حلِ سه‌لایه (چون هیچ‌کدام تنها کافی نیست):
+#    الف) **منبعِ حقیقت، شمارشِ زنده است.** شمارنده‌ها کشِ کارایی‌اند، نه داده.
+#    ب) **سیگنال‌ها** شمارنده را با هر ذخیره/حذفِ کاربر/آزمون هم‌گام می‌کنند.
+#    ج) **`recount_mosque_stats()`** هر عدد را از صفر می‌شمارد؛ هم دستورِ
+#       `recount_mosque_stats` و هم `keepalive` (دوره‌ای) صدایش می‌زنند تا
+#       هیچ انحرافی بیش از چند دقیقه زنده نماند.
+
+
+def live_registered_count(mosque_id: int) -> int:
+    """شمارشِ زندهٔ شرکت‌کنندگانِ فعالِ یک مسجد (منبعِ حقیقت)."""
+    from apps.authentication.choices import UserRole
+    from apps.authentication.models import User
+
+    return User.objects.filter(
+        mosque_id=mosque_id,
+        is_active=True,
+        role=UserRole.PARTICIPANT,
+    ).count()
+
+
+def live_completed_exam_count(mosque_id: int) -> int:
+    """شمارشِ زندهٔ آزمون‌های تمام‌شده (تحویل‌شده/پایان‌یافته)ی یک مسجد."""
+    from apps.exam.choices import ExamAttemptStatus
+    from apps.exam.models import ExamAttempt
+
+    return ExamAttempt.objects.filter(
+        mosque_id=mosque_id,
+        status__in=[ExamAttemptStatus.COMPLETED, ExamAttemptStatus.TIMED_OUT],
+    ).count()
+
+
+def recount_mosque_stats(*, mosque_ids: list[int] | None = None) -> dict[str, int]:
+    """بازشمارشِ شمارنده‌های denormalized و نوشتنِ فقط مقادیرِ متفاوت.
+
+    خروجی: `{"checked": n, "fixed": m}` — `fixed` تعداد مساجدی است که واقعاً
+    نیاز به اصلاح داشتند. نوشتنِ مقادیرِ برابر انجام نمی‌شود تا هر اجرا
+    (که در `keepalive` دوره‌ای است) بیرون‌رویِ بی‌مورد به دیتابیس نداشته باشد.
+    """
+    from .models import Mosque
+
+    qs = Mosque.all_objects.all()
+    if mosque_ids is not None:
+        qs = qs.filter(pk__in=mosque_ids)
+
+    checked = 0
+    fixed = 0
+    dirty_ids: list[int] = []
+    for mosque in qs.only("id", "registered_count", "completed_exam_count").iterator():
+        checked += 1
+        live_reg = live_registered_count(mosque.pk)
+        live_done = live_completed_exam_count(mosque.pk)
+        if live_reg != mosque.registered_count or live_done != mosque.completed_exam_count:
+            Mosque.all_objects.filter(pk=mosque.pk).update(
+                registered_count=live_reg,
+                completed_exam_count=live_done,
+            )
+            fixed += 1
+            dirty_ids.append(mosque.pk)
+
+    if dirty_ids:
+        invalidate_domain_cache("mosques", reason="mosque.stats_recounted")
+        invalidate_domain_cache("reporting", reason="mosque.stats_recounted", record_outbox=False)
+    return {"checked": checked, "fixed": fixed}
+
+
+def refresh_mosque_stats(mosque_id: int | None) -> None:
+    """هم‌گام‌سازیِ فوریِ یک مسجد پس از رخدادِ کاربر/آزمون.
+
+    این تابع از سیگنال‌ها صدا زده می‌شود و سبک است: دو شمارش با ایندکس و یک
+    `UPDATE` (فقط اگر عدد عوض شده باشد).
+    """
+    if not mosque_id:
+        return
+    from .models import Mosque
+
+    mosque = (
+        Mosque.all_objects.filter(pk=mosque_id)
+        .only("id", "registered_count", "completed_exam_count")
+        .first()
+    )
+    if mosque is None:  # pragma: no cover - مسجدِ حذف‌شده
+        return
+    live_reg = live_registered_count(mosque_id)
+    live_done = live_completed_exam_count(mosque_id)
+    if live_reg == mosque.registered_count and live_done == mosque.completed_exam_count:
+        return
+    Mosque.all_objects.filter(pk=mosque_id).update(
+        registered_count=live_reg, completed_exam_count=live_done
+    )
+    invalidate_domain_cache(
+        "mosques", reason=f"mosque.stats_refreshed:{mosque_id}", record_outbox=False
+    )
+
+
 def seed_default_mosques(*, request: Any = None) -> dict[str, int]:
     """ایجاد یا همگام‌سازی ۱۷ مسجد پیش‌فرض حوزه مقاومت بسیج ۱۸۵ شهید کاوه."""
     created_count = 0

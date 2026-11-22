@@ -378,6 +378,41 @@ paths:
               schema:
                 type: object
           description: ''
+  /api/v1/auth/lookup/:
+    post:
+      operationId: auth_lookup_create
+      description: |-
+        اگر پرونده هست، نشستِ تازه صادر می‌شود؛ وگرنه پاسخِ صریحِ `not_found`.
+
+        ⚠️ این مسیر عمداً یک «کشفِ اطلاعات» کوچک دارد: با دانستنِ یک شماره
+        می‌شود فهمید آن شماره در سامانه ثبت‌نام کرده یا نه، و نامِ کوچکِ صاحبش
+        را دید. این هزینهٔ آگاهانهٔ سیاستِ «ورود بدونِ کد» است؛ با روشن‌کردنِ
+        `BALE_OTP_MANDATORY` خودکار بسته می‌شود.
+      summary: یافتنِ پروندهٔ شرکت‌کننده با شمارهٔ همراه (ورودِ بازگشتی بدونِ فرمِ
+        تازه)
+      tags:
+      - Authentication & Identity
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ParticipantLookupInputRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ParticipantLookupInputRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ParticipantLookupInputRequest'
+        required: true
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfileOutput'
+          description: ''
   /api/v1/auth/me/:
     get:
       operationId: auth_me_retrieve
@@ -1643,6 +1678,87 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/SMSDeliveryLog'
+          description: ''
+  /api/v1/notifications/bale/start-link/:
+    get:
+      operationId: notifications_bale_start_link_retrieve
+      description: پیوندهای آماده برای دکمهٔ «اتصال با بله» در صفحهٔ ثبت‌نام.
+      summary: ساختِ پیوندِ اتصالِ یک‌ضربه (بدونِ تایپ در بله)
+      parameters:
+      - in: query
+        name: phone_number
+        schema:
+          type: string
+        required: true
+      tags:
+      - Notifications & Bale
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/notifications/bale/status/:
+    get:
+      operationId: notifications_bale_status_retrieve
+      description: بازگرداندنِ وضعیتِ کانال (بدونِ افشای اینکه شماره در سامانه هست
+        یا نه).
+      summary: وضعیت اتصال بله برای یک شماره همراه
+      parameters:
+      - in: query
+        name: phone_number
+        schema:
+          type: string
+        required: true
+      tags:
+      - Notifications & Bale
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/notifications/bale/webhook/:
+    get:
+      operationId: notifications_bale_webhook_retrieve
+      description: |-
+        پاسخِ سلامت — بله در پاسخِ `setWebhook` وضعیتِ این نشانی را گزارش می‌کند.
+
+        چرا GET لازم است؟ بعضی میزبان‌ها پیش از ثبتِ وب‌هوک یک درخواستِ ساده
+        می‌زنند و اگر ۴۰۵ بگیرند، ثبت را رد می‌کنند. هم‌چنین این پاسخ نشان
+        می‌دهد که مسیر واقعاً به اپلیکیشنِ درست وصل است.
+      summary: بازرسی دسترس‌پذیری وب‌هوک بله (برای setWebhook)
+      tags:
+      - Notifications & Bale
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+    post:
+      operationId: notifications_bale_webhook_create
+      description: 'پردازشِ یک آپدیت: ثبتِ شماره، مصرفِ کدِ اتصال، یا پاسخِ راهنما.'
+      summary: وب‌هوک دریافت آپدیت‌های ربات بله (تنظیم‌شده با secret)
+      tags:
+      - Notifications & Bale
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
           description: ''
   /api/v1/reporting/admin/dashboard/:
     get:
@@ -3582,6 +3698,12 @@ components:
       properties:
         rank:
           type: integer
+        is_tied:
+          type: boolean
+          default: false
+        tied_count:
+          type: integer
+          default: 0
         tier:
           type: string
         tier_label:
@@ -3592,6 +3714,12 @@ components:
           type: string
         name:
           type: string
+        initial:
+          type: string
+          default: ''
+        name_core:
+          type: string
+          default: ''
         neighborhood:
           type: string
         imam_name:
@@ -3683,6 +3811,22 @@ components:
           maxLength: 10
       required:
       - code
+      - phone_number
+    ParticipantLookupInputRequest:
+      type: object
+      description: |-
+        ورودیِ یافتنِ پرونده: فقط شمارهٔ همراه.
+
+        شماره به‌صورتِ رشته می‌آید (ارقامِ فارسی هم پذیرفته می‌شود) و همان
+        `normalize_and_validate_phone` آن را استاندارد می‌کند؛ پس اعتبارسنجیِ
+        این‌جا عمداً سبک است تا پیامِ خطا یکی باشد.
+      properties:
+        phone_number:
+          type: string
+          minLength: 1
+          description: شمارهٔ همراه ثبت‌شده
+          maxLength: 20
+      required:
       - phone_number
     ParticipantRegistrationInputRequest:
       type: object

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from django.urls import path
 
+from .lookup_views import ParticipantLookupAPIView
 from .views import (
     AdminRiskSignalListAPIView,
     AdminRiskSignalReviewAPIView,
@@ -33,6 +34,9 @@ urlpatterns = [
     # ثبت‌نام و ورود شرکت‌کنندگان
     path("register/", ParticipantRegisterAPIView.as_view(), name="register"),
     path("signup/", LegacySignupAliasAPIView.as_view(), name="legacy-signup"),
+    # ورودِ بازگشتی: «قبلاً ثبت‌نام کرده‌ام» — پرونده را با شماره پیدا می‌کند و
+    # نشستِ تازه می‌دهد، تا کاربر دوباره فرمِ خالی نبیند.
+    path("lookup/", ParticipantLookupAPIView.as_view(), name="lookup"),
     path("otp/request/", OTPRequestAPIView.as_view(), name="otp-request"),
     path("otp/verify/", OTPVerifyAPIView.as_view(), name="otp-verify"),
     path("login/password/", PasswordLoginAPIView.as_view(), name="login-password"),

@@ -4,12 +4,14 @@
 
   ۱) **ساختِ کارنامه‌های واقعی** (ثبت‌نام → آزمون → ارسال). دقیق است ولی
      کند و شلوغ است: ۵۰ کارنامه یعنی ۵۰ کاربر، ۵۰ سری پرسش و ۵۰ رسید.
-  ۲) **افزایشِ شمارنده‌های انبارشدهٔ مسجد.** همان چیزی که موتورِ آزمون در
-     پایانِ هر کارنامه انجام می‌دهد (`increment_mosque_completed_exam_count`)
-     و کشِ رتبه‌بندی را هم همان لحظه باطل می‌کند. سریع، برگشت‌پذیر و
-     **دقیقاً همان مسیری** که در عمل جدول را تغییر می‌دهد.
+  ۲) **افزایشِ شمارنده‌های انبارشدهٔ مسجد.** سریع بود، ولی **غلط از آب درآمد**:
+     جدول اکنون از شمارشِ زندهٔ کارنامه‌ها می‌خواند (شمارنده فقط کشِ کارایی
+     است)، پس بالا بردنِ آن عدد هیچ ردیفی را در جدول تکان نمی‌داد — و بدتر،
+     بعد از آن هر «بازشماری» اعدادِ قلابی را پاک می‌کرد و ادمین فکر می‌کرد
+     باگ دارد.
 
-این دستور راهِ دوم را می‌رود، با سه تضمین:
+این دستور راهِ اول را می‌رود: **دادهٔ واقعی** (کاربرِ آزمایشی + کارنامهٔ
+پایان‌یافته) می‌سازد، با سه تضمین:
 
   • **محافظِ محیط:** اگر `DEBUG=False` باشد اجرا نمی‌شود (مگر با `--force`)؛
     هرگز روی سایتِ واقعی با دادهٔ واقعی دست نمی‌برد.
@@ -24,6 +26,7 @@
     python manage.py simulate_leaderboard --scenario crowded --reset
     python manage.py simulate_leaderboard --list           # فهرستِ سناریوها
     python manage.py simulate_leaderboard --reset          # فقط صفرکردن
+    python manage.py simulate_leaderboard --purge           # پاک‌کردنِ دادهٔ شبیه‌سازی
     python manage.py simulate_leaderboard --recount        # بازشماری از کارنامه‌های واقعی
     python manage.py simulate_leaderboard --dry-run        # فقط نشان بده چه می‌شود
 """
@@ -34,9 +37,15 @@ from typing import Any
 
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError, CommandParser
+from django.db import transaction
 
 from apps.mosques.models import Mosque
-from apps.mosques.services import increment_mosque_completed_exam_count
+
+#: پیشوندِ شمارهٔ کاربرانِ ساختگی؛ تنها راهِ مطمئنِ جدا کردنِ دادهٔ شبیه‌سازی از
+#: دادهٔ واقعی. عمداً داخلِ بازهٔ شماره‌های معتبر است تا هیچ اعتبارسنجی‌ای نشکند،
+#: ولی هیچ انسانِ واقعی‌ای آن را ندارد (۰۹۹۰).
+FAKE_PHONE_PREFIX = "0990"
+FAKE_TRACKING_PREFIX = "SIM-"
 
 # ═══ سناریوها ═══════════════════════════════════════════════════════════════
 # هر سناریو یک تابعِ «توزیع» است: به هر مسجد (به ترتیبِ نمایش) تعدادی
@@ -111,6 +120,11 @@ class Command(BaseCommand):
             help="فهرستِ سناریوهای آماده و تعدادشان.",
         )
         parser.add_argument(
+            "--purge",
+            action="store_true",
+            help="همهٔ دادهٔ شبیه‌سازی‌شده (کاربرانِ ۰۹۹۰ و کارنامه‌هایشان) را پاک کن.",
+        )
+        parser.add_argument(
             "--force",
             action="store_true",
             help="اجرا حتی وقتی DEBUG=False (⚠️ روی دادهٔ واقعی).",
@@ -137,11 +151,18 @@ class Command(BaseCommand):
         if not mosques:
             raise CommandError("هیچ مسجدِ فعالی نیست. اول: python manage.py seed_mosques")
 
+        if options["purge"]:
+            self._purge(dry_run=bool(options["dry_run"]))
+            return
+
         if options["recount"]:
-            self._recount(mosques, dry_run=bool(options["dry_run"]))
+            self._recount(dry_run=bool(options["dry_run"]))
             return
 
         if options["reset"] or options["only_reset"]:
+            # «صفرکردن» یعنی پاک‌کردنِ دادهٔ شبیه‌سازی، نه صفرکردنِ یک شمارندهٔ
+            # آماری — وگرنه جدول (که از دادهٔ زنده می‌خواند) تغییری نمی‌دید.
+            self._purge(dry_run=bool(options["dry_run"]))
             Mosque.objects.update(completed_exam_count=0, registered_count=0)
             self.stdout.write(self.style.WARNING("همهٔ شمارنده‌ها صفر شد."))
             from apps.core.cache_invalidation import invalidate_domain_cache
@@ -165,31 +186,79 @@ class Command(BaseCommand):
             counts = [pattern[i % len(pattern)] for i in range(len(mosques))]
             counts.sort(reverse=True)
 
-        # شمارنده‌ها را می‌نویسیم — از همان سرویسِ واقعیِ موتورِ آزمون، تا کش
-        # رتبه‌بندی هم لحظه‌ای باطل شود و صفحه بدونِ انتظار عددِ تازه ببیند.
-        for mosque, count in zip(mosques, counts, strict=False):
-            for _ in range(int(count)):
-                increment_mosque_completed_exam_count(mosque.id)
-            if count:
-                Mosque.objects.filter(pk=mosque.id).update(
-                    registered_count=count + (count // 4) + 1
-                )
+        # ── ساختِ دادهٔ **واقعی** ─────────────────────────────────────────
+        # برای هر «شرکت‌کنندهٔ کامل» یک کاربرِ آزمایشی + یک کارنامهٔ پایان‌یافته
+        # می‌سازیم. جدول از همین کارنامه‌ها می‌خواند، پس عددی که ادمین می‌بیند
+        # دقیقاً همان چیزی است که اتفاق افتاده — نه یک شمارندهٔ قلابی.
+        created_users = 0
+        created_attempts = 0
+        if not options["dry_run"]:
+            from apps.exam.services import create_simulated_finished_attempt
+
+            for mosque, count in zip(mosques, counts, strict=False):
+                for _ in range(int(count)):
+                    create_simulated_finished_attempt(mosque=mosque)
+                    created_users += 1
+                    created_attempts += 1
 
         total = sum(counts)
+        if options["dry_run"]:
+            self.stdout.write(
+                self.style.WARNING(
+                    f"حالتِ آزمایشی: {total} کاربر و کارنامه ساخته می‌شد؛ چیزی نوشته نشد."
+                )
+            )
+            return
         self.stdout.write(
             self.style.SUCCESS(
-                f"سناریوی «{name}» ساخته شد — {total} شرکت‌کننده در {len(mosques)} مسجد."
+                f"سناریوی «{name}» ساخته شد — {created_attempts} کارنامهٔ واقعی "
+                f"({created_users} کاربرِ آزمایشی) در {len(mosques)} مسجد."
             )
         )
         self.stdout.write("حالا صفحهٔ /mosques را باز کنید (یا دکمهٔ تازه‌سازی مرورگر).")
         self.stdout.write(
             self.style.WARNING(
-                "برای بازگرداندنِ جدول به دادهٔ واقعی: "
-                "python manage.py simulate_leaderboard --recount"
+                "برای پاک‌کردنِ کاملِ این دادهٔ آزمایشی: python manage.py simulate_leaderboard --purge"
             )
         )
 
-    def _recount(self, mosques: list[Mosque], *, dry_run: bool) -> None:
+    def _purge(self, *, dry_run: bool) -> None:
+        """پاک‌کردنِ همان چیزی که این دستور ساخت — و هیچ‌چیزِ دیگر.
+
+        چرا با پیشوندِ شماره؟ چون تنها نشانهٔ قطعیِ «ساختگی بودن» همین است.
+        حذف بر اساسِ تاریخِ ایجاد یا نقش، می‌توانست دادهٔ واقعی را هم ببرد؛
+        حذف بر اساسِ پیشوندِ ۰۹۹۰ هیچ کاربرِ واقعی‌ای را لمس نمی‌کند.
+        """
+        from apps.authentication.models import User
+        from apps.exam.models import ExamAttempt
+
+        fakes = User.objects.filter(phone_number__startswith=FAKE_PHONE_PREFIX)
+        count_users = fakes.count()
+        count_attempts = ExamAttempt.objects.filter(
+            tracking_code__startswith=FAKE_TRACKING_PREFIX
+        ).count()
+
+        if dry_run:
+            self.stdout.write(
+                self.style.WARNING(
+                    f"حالتِ آزمایشی: {count_users} کاربر و {count_attempts} کارنامه حذف می‌شد."
+                )
+            )
+            return
+
+        with transaction.atomic():
+            ExamAttempt.objects.filter(tracking_code__startswith=FAKE_TRACKING_PREFIX).delete()
+            # سیگنال‌های حذف، شمارندهٔ مساجد را خودشان هم‌گام می‌کنند.
+            fakes.delete()
+
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"پاک شد: {count_users} کاربرِ آزمایشی و {count_attempts} کارنامه. "
+                "جدول اکنون فقط دادهٔ واقعی را نشان می‌دهد."
+            )
+        )
+
+    def _recount(self, *, dry_run: bool) -> None:
         """شمارنده‌های هر مسجد را از **منبعِ حقیقت** (کارنامه‌ها) از نو می‌سازد.
 
         چرا لازم است؟ شبیه‌سازی شمارنده‌های انبارشده را بالا می‌برد
@@ -228,7 +297,7 @@ class Command(BaseCommand):
         }
 
         changes: list[str] = []
-        for mosque in mosques:
+        for mosque in Mosque.objects.filter(is_active=True).order_by("display_order", "id"):
             new_completed = completed.get(mosque.pk, 0)
             new_registered = max(registered.get(mosque.pk, 0), new_completed)
             if (

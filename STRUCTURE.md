@@ -9,12 +9,12 @@
 
 ## اپلیکیشن‌ها
 
-مجموع: **9 اپ** · 21 مدل · 16 مایگریشن · 60 ویو · 70 مسیر
+مجموع: **9 اپ** · 21 مدل · 16 مایگریشن · 60 ویو · 71 مسیر
 
 | اپ | مدل | مایگریشن | ویو | مسیر |
 |---|---:|---:|---:|---:|
 | `audit_logs` | 1 | 2 | 4 | 4 |
-| `authentication` | 4 | 1 | 19 | 20 |
+| `authentication` | 4 | 1 | 19 | 21 |
 | `command_center` | 0 | 0 | 1 | 2 |
 | `core` | 4 | 1 | 2 | 3 |
 | `exam` | 6 | 3 | 14 | 17 |
@@ -85,6 +85,7 @@ Kaveh185-Back/apps/
 │   ├── deprecation.py
 │   ├── filters.py  # فیلترهای پیشرفته و چندبعدی queryset
 │   ├── jwt_auth.py
+│   ├── lookup_views.py
 │   ├── managers.py
 │   ├── models.py  # مدل‌های داده و قیود یکپارچگی دیتابیس
 │   ├── otp.py
@@ -108,6 +109,7 @@ Kaveh185-Back/apps/
 │   └── views.py  # لایهٔ مرز HTTP و ارکستریشن
 ├── core/
 │   ├── health/
+│   ├── management/
 │   ├── migrations/
 │   ├── tests/
 │   ├── __init__.py
@@ -184,6 +186,7 @@ Kaveh185-Back/apps/
 │   ├── selectors.py  # خواندن داده و کوئری‌های بهینه‌شده (بدون side effect)
 │   ├── serializers.py  # قرارداد اعتبارسنجی ورودی و خروجی
 │   ├── services.py  # منطق کسب‌وکار، تراکنش‌های اتمی و نوشتن
+│   ├── signals.py
 │   ├── urls.py  # قرارداد مسیرهای API
 │   ├── validators.py  # اعتبارسنج‌های قابل استفادهٔ مجدد (کدملی، موبایل، تاریخ جلالی)
 │   └── views.py  # لایهٔ مرز HTTP و ارکستریشن
@@ -229,6 +232,8 @@ apps/core/
 │   ├── throttles.py  # محدودسازی نرخ و محافظت در برابر سوءاستفاده
 │   ├── urls.py  # قرارداد مسیرهای API
 │   └── views.py  # لایهٔ مرز HTTP و ارکستریشن
+├── management/
+│   └── commands/
 ├── migrations/
 │   ├── 0001_initial.py
 │   └── __init__.py

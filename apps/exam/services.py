@@ -1015,3 +1015,61 @@ def seed_default_questions(*, request: Any = None) -> dict[str, int]:
         "existing": existing_count,
         "total": created_count + existing_count,
     }
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  دادهٔ شبیه‌سازی — واقعی، نه شمارندهٔ قلابی
+# ════════════════════════════════════════════════════════════════════════════
+def create_simulated_finished_attempt(*, mosque: Any, seq: int | None = None) -> Any:
+    """ساختِ یک شرکت‌کننده و کارنامهٔ **پایان‌یافتهٔ واقعی** برای مسجدِ داده‌شده.
+
+    چرا این تابع؟ چون جدولِ رتبه‌بندی از شمارشِ زندهٔ کارنامه‌ها می‌خواند و
+    شمارندهٔ ذخیره‌شده فقط کشِ کارایی است. «شبیه‌سازی» با بالا بردنِ آن عدد،
+    هیچ ردیفی را در جدول تکان نمی‌داد و بعد با اولین بازشماری محو می‌شد —
+    که به چشمِ ادمین دقیقاً «باگِ شمارنده» دیده می‌شد.
+
+    مشخصاتِ ردیفِ ساختگی:
+    • شمارهٔ همراه با پیشوندِ `0990` (هیچ شمارهٔ واقعی‌ای این پیشوند را ندارد)
+      تا پاک‌سازی بتواند **قطعاً** فقط دادهٔ ساختگی را بزند.
+    • کدِ رهگیری با پیشوندِ `SIM-`.
+    • زمان/امتیازِ ساختگی ولی سازگار (پایان بعد از شروع، امتیاز داخلِ بازه).
+    """
+    from apps.authentication.choices import UserRole
+    from apps.core.crypto import blind_index
+    from apps.mosques.models import Mosque as _Mosque
+
+    n = seq if seq is not None else (ExamAttempt.objects.count() + 1)
+    phone = f"0990{1000000 + n:07d}"[:11]
+    national_id = f"999{n:07d}"
+    mosque_obj = mosque if isinstance(mosque, _Mosque) else _Mosque.all_objects.get(pk=mosque)
+
+    user = User.objects.create(
+        phone_number=phone,
+        national_id=national_id,
+        national_id_hash=blind_index(national_id),
+        first_name=f"آزمایشی {n}",
+        last_name="شبیه‌سازی",
+        birth_date=timezone.now().date().replace(year=1383 - 622),
+        mosque=mosque_obj,
+        role=UserRole.PARTICIPANT,
+        is_phone_verified=True,
+        is_active=True,
+    )
+
+    started = timezone.now() - timedelta(minutes=6)
+    finished = started + timedelta(minutes=2, seconds=(n * 7) % 120)
+    rng = secrets.SystemRandom()
+    correct = rng.randint(5, 20)
+    return ExamAttempt.objects.create(
+        user=user,
+        mosque=mosque_obj,
+        tracking_code=f"SIM-{secrets.token_hex(4).upper()}",
+        status=ExamAttemptStatus.COMPLETED,
+        started_at=started,
+        expires_at=started + timedelta(minutes=5),
+        completed_at=finished,
+        duration_seconds=int((finished - started).total_seconds()),
+        correct_count=min(correct, 20),
+        total_questions=20,
+        total_score=round(correct * 5.0, 2),
+    )
