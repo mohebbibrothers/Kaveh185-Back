@@ -95,3 +95,18 @@ def test_promote_and_logout_all() -> None:
     assert user.role == UserRole.ADMIN
     assert user.is_superuser is True
     assert all(s.is_revoked for s in AuthSession.objects.filter(user=user))
+
+
+@pytest.mark.django_db
+def test_missing_account_explains_what_to_do_next() -> None:
+    """شمارهٔ ناموجود: پیام باید بگوید «حساب نیست»، نه فقط «رمز نشد».
+
+    این تست از یک گزارشِ واقعی آمد: مدیر دستور را زد و پاسخ گرفت
+    «حسابی با این شماره نیست» — یعنی مشکل رمز نبود، خودِ حساب وجود نداشت.
+    پیام باید فهرست‌کردنِ حساب‌ها را نشان دهد تا این حلقه کوتاه شود.
+    """
+    with pytest.raises(CommandError) as exc:
+        call_command("set_admin_password", phone="09121234567", password="a" * 12)
+    message = str(exc.value)
+    assert "whoami_accounts" in message
+    assert "grant_admin" in message

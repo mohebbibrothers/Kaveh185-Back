@@ -138,9 +138,16 @@ class Command(BaseCommand):
                 raise CommandError(f"شمارهٔ همراه معتبر نیست: {exc}") from exc
             user = User.objects.filter(phone_number=norm).first()
             if user is None:
+                # ⚠️ این خط در عمل رخ داد و مدیر را سردرگم کرد («رمز عوض نشد»).
+                # پیام باید دو چیز را بگوید: ۱) مشکل رمز نیست، خودِ حساب نیست؛
+                # ۲) دقیقاً با چه دستوری بفهمد چه حساب‌هایی هست.
                 raise CommandError(
-                    "حسابی با این شماره نیست. برای ساختنِ ادمینِ تازه: "
-                    "`manage.py reset_admin --phone ... --password ...`"
+                    f"هیچ حسابی با شمارهٔ {norm} روی این نصب نیست "
+                    "(پس مشکل رمز نبوده؛ حساب ساخته نشده یا با شمارهٔ دیگری است).\n"
+                    "  ۱) ببینید چه حساب‌هایی هست:  manage.py whoami_accounts\n"
+                    "  ۲) جست‌وجوی دقیق:            manage.py whoami_accounts --exact <شماره یا کد ملی>\n"
+                    "  ۳) اگر حساب ادمین وجود ندارد:  manage.py grant_admin "
+                    "--phone <شماره> --national-id <کد ملی> --password <رمز>"
                 )
             return user
 
@@ -151,7 +158,10 @@ class Command(BaseCommand):
                 raise CommandError(f"کد ملی معتبر نیست: {exc}") from exc
             user = User.objects.filter(national_id=nid).first()
             if user is None:
-                raise CommandError("حسابی با این کد ملی نیست.")
+                raise CommandError(
+                    f"هیچ حسابی با کد ملی {nid} روی این نصب نیست.\n"
+                    "  فهرستِ حساب‌ها: manage.py whoami_accounts"
+                )
             return user
 
         # هیچ شناسه‌ای نداده ⇒ اگر فقط یک حسابِ مدیریتی هست، همان را بردار.
