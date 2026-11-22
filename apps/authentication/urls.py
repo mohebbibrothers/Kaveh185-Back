@@ -5,6 +5,7 @@ from __future__ import annotations
 from django.urls import path
 
 from .lookup_views import ParticipantLookupAPIView
+from .session_state_views import SessionStateAPIView
 from .views import (
     AdminRiskSignalListAPIView,
     AdminRiskSignalReviewAPIView,
@@ -40,6 +41,10 @@ urlpatterns = [
     path("otp/request/", OTPRequestAPIView.as_view(), name="otp-request"),
     path("otp/verify/", OTPVerifyAPIView.as_view(), name="otp-verify"),
     path("login/password/", PasswordLoginAPIView.as_view(), name="login-password"),
+    # «من چه کسی هستم؟» — نشستِ خودترمیم: توکنِ منقضی را با refresh زنده
+    # می‌کند، دستگاهِ تازه را با شماره + کد ملی وصل می‌کند، و قدمِ بعدی را
+    # می‌گوید. بدونِ این مسیر، رابط مجبور بود وضعیت را حدس بزند.
+    path("session/state/", SessionStateAPIView.as_view(), name="session-state"),
     path("token/refresh/", TokenRefreshAPIView.as_view(), name="token-refresh"),
     path("logout/", LogoutAPIView.as_view(), name="logout"),
     path("logout-all/", LogoutAllAPIView.as_view(), name="logout-all"),

@@ -135,6 +135,20 @@ class PasswordLoginInputSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True, max_length=128)
 
 
+class SessionStateInputSerializer(serializers.Serializer):
+    """ورودیِ «وضعیتِ نشست» — همه‌چیز اختیاری است.
+
+    چرا اختیاری؟ چون رابط ممکن است فقط `refresh` داشته باشد (توکنِ دسترسی
+    منقضی شده)، یا هیچ‌کدام (دستگاهِ تازه) و بخواهد با شماره + کد ملی پرونده
+    را وصل کند. یک serializerِ سخت‌گیر اولی را می‌شکست.
+    """
+
+    access = serializers.CharField(required=False, allow_blank=True, max_length=4096)
+    refresh = serializers.CharField(required=False, allow_blank=True, max_length=4096)
+    phone_number = serializers.CharField(required=False, allow_blank=True, max_length=15)
+    national_id = serializers.CharField(required=False, allow_blank=True, max_length=10)
+
+
 class TokenRefreshInputSerializer(serializers.Serializer):
     """درخواست تمدید توکن دسترسی با استفاده از توکن Refresh."""
 
