@@ -54,7 +54,8 @@ class _Lock:
             if os.name == "nt":  # pragma: no cover - ویندوز در تولید نیست
                 import msvcrt
 
-                msvcrt.locking(self.handle.fileno(), msvcrt.LK_NBLCK, 1)
+                # mypy روی لینوکس `msvcrt` را نمی‌شناسد؛ رفتار همان قفلِ اجباری است.
+                msvcrt.locking(self.handle.fileno(), msvcrt.LK_NBLCK, 1)  # type: ignore[attr-defined]
             else:
                 import fcntl
 
