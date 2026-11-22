@@ -44,16 +44,16 @@ def bot_username() -> str:
         return ""
 
 
-def bot_deep_link(token: str = "") -> str:
+def bot_deep_link(intent: str | None = None) -> str:
     """پیوندِ عمیقِ ربات؛ با `?start=` بله خودش پیامِ شروع را می‌فرستد."""
     name = bot_username()
     if not name:
         return ""
     base = f"https://ble.ir/{name}"
-    return f"{base}?{urlencode({'start': token})}" if token else base
+    return f"{base}?{urlencode({'start': intent})}" if intent else base
 
 
-def share_contact_link(token: str = "") -> str:
+def share_contact_link(intent: str | None = None) -> str:
     """پیوندی که گفتگو را با دکمهٔ «ارسالِ شمارهٔ من» باز می‌کند.
 
     بله (مانندِ تلگرام) پارامترِ `?start=` و `?text=` را در پیوندِ ربات
@@ -62,6 +62,7 @@ def share_contact_link(token: str = "") -> str:
     بله می‌شود ساخت — و اگر بله آن را نادیده گرفت، خودِ ربات دکمهٔ اشتراکِ
     شماره را می‌فرستد (پیامِ اول پس از «شروع»).
     """
+    del intent  # مسیرِ پشتیبان نیازی به شناسه ندارد؛ خودِ ربات دکمه را می‌فرستد
     name = bot_username()
     if not name:
         return ""

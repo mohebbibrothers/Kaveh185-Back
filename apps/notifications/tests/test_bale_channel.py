@@ -2048,6 +2048,7 @@ def test_contact_share_from_unknown_phone_is_refused() -> None:
     assert not BaleSubscriber.objects.filter(phone_number="09999999999").exists()
 
 
+@override_settings(BALE_BOT_USERNAME="kaveh185_bot")
 @pytest.mark.django_db
 def test_deep_link_intent_links_without_typing() -> None:
     """`/start <intent>` از پیوندِ عمیق ⇒ اتصال + کد، بدونِ هیچ تایپی از کاربر."""
@@ -2094,6 +2095,7 @@ def test_intent_is_single_use_and_expires() -> None:
     assert redeem_intent(raw_text=fresh["intent"], chat={"id": 3})["matched"] is False
 
 
+@override_settings(BALE_BOT_USERNAME="kaveh185_bot")
 @pytest.mark.django_db
 def test_start_link_endpoint_returns_one_tap_links(client: Any) -> None:
     """`start-link` دو پیوندِ آماده می‌دهد؛ هیچ کدی برنمی‌گرداند."""
