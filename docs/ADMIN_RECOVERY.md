@@ -1,0 +1,80 @@
+# بازیابیِ دسترسیِ ادمین (بدونِ حذفِ حساب)
+
+## چه اتفاقی افتاد؟
+
+مدیر از پنل بیرون افتاد و با همان «یوزر/پس قبلی» نمی‌توانست وارد شود.
+سه علت ممکن بود و هر سه بررسی شد:
+
+| علت | نشانه | راه‌حل |
+|---|---|---|
+| رمز هرگز ست نشده بود | `has_usable_password() == False` ⇒ **هر** رمزی «اشتباه» است | `set_admin_password` |
+| رمز واقعاً اشتباه بود | `Invalid password` در لاگِ ورود | `set_admin_password` |
+| حساب `is_active=False` یا `is_staff=False` بود | پنل ۴۰۳ می‌دهد | `set_admin_password` (+`--promote`) |
+
+نکتهٔ مهم: `grant_admin` عمداً **رمز نمی‌دهد** (فقط پرچم‌ها را ست می‌کند) و
+`reset_admin` رمز می‌دهد ولی **حساب را حذف و از نو می‌سازد**. هیچ‌کدام
+«فقط رمزم را عوض کن» نیستند. برای همین دستورِ اختصاصی اضافه شد.
+
+## دستور
+
+```bash
+cd /home/kavehir/Kaveh185-Back
+PY=~/virtualenv/Kaveh185-Back/3.12/bin/python
+
+# ۱) بازنشانیِ رمز با انتخابِ خودتان (حساب، نقش و پرونده‌ها دست‌نخورده)
+$PY manage.py set_admin_password --phone 0912xxxxxxx --password 'Ramz-e-Taze-1405'
+
+# ۲) اگر حساب ادمین نیست و باید بشود (is_staff/superuser + نقشِ ADMIN)
+$PY manage.py set_admin_password --phone 0912xxxxxxx --promote
+
+# ۳) اگر نمی‌دانید رمز چه باشد: بدونِ --password، خودش یک رمزِ ۱۴ کاراکتری
+#    می‌سازد و یک‌بار چاپ می‌کند (فقط همان لحظه — جایی ذخیره نمی‌شود)
+$PY manage.py set_admin_password --phone 0912xxxxxxx
+
+# ۴) اگر نشست‌های قبلی باید باطل شوند (مثلاً دستگاهِ گم‌شده)
+$PY manage.py set_admin_password --phone 0912xxxxxxx --logout-all
+```
+
+`--phone` یا `--national-id` یکی لازم است. اگر هیچ‌کدام داده نشود، دستور با
+خطای روشن متوقف می‌شود (هیچ تغییری در داده نمی‌دهد).
+
+## چرا امن است؟
+
+* حساب **حذف نمی‌شود**: کارنامه، امتیاز، مسجد و تاریخچه سرجایش می‌ماند.
+* رمز با `set_password` جنگو ست می‌شود (هشِ PBKDF2، هرگز متنِ خام).
+* هر اجرا یک `AuditAction.USER_UPDATED` در جدولِ audit ثبت می‌کند:
+  چه کسی (خطِ فرمان)، کدام کاربر، و فقط `{"password_changed": true}` —
+  **رمز در لاگ نمی‌رود**.
+* رمزِ تولیدی از `secrets` می‌آید و در خروجیِ خطِ فرمان یک‌بار چاپ می‌شود.
+
+## ورود به پنل
+
+1. `https://kaveh185.ir/login/` را باز کنید.
+2. بلوکِ **«ورودِ مدیران و اپراتورها»** را باز کنید.
+3. شمارهٔ همراه یا کد ملی + رمز را بزنید؛ به‌طور خودکار به
+   `https://api.kaveh185.ir/secure-kaveh185-admin/` می‌روید.
+
+> پنل روی دامنهٔ **API** است، نه روی سایتِ ایستا. این را عمداً در کد
+> صریح کرده‌ایم (`ADMIN_PATH` در `src/shared/api/admin-auth.ts`)، چون یک
+> `router.push("/secure-kaveh185-admin/")` نسبی، مدیر را به ۴۰۴ می‌برد و
+> او فکر می‌کند «بازهم بیرون انداخته شدم».
+
+## اگر بازهم نشد
+
+```bash
+# ۱) آیا حساب وجود دارد و فعال است؟
+$PY manage.py shell -c "
+from apps.authentication.models import User
+u = User.objects.filter(phone_number='0912xxxxxxx').first()
+print(u, getattr(u,'is_active',None), u.has_usable_password() if u else None, list(u.groups.values_list('name',flat=True)) if u else None)
+"
+```
+
+اگر `u is None` ⇒ شماره اشتباه است (یا حساب پاک شده). با `--national-id`
+امتحان کنید. اگر `is_active=False` ⇒ `--promote` هم بزنید.
+
+## ⚠️ یادآوریِ امنیتی
+
+توکنِ رباتِ بله و کلیدِ وب‌هوک و توکنِ گیت‌هاب قبلاً در گفتگو افشا شده‌اند.
+پس از پایانِ کار باید **revoke/rotate** شوند. هیچ‌کدام نباید در فایل، لاگ
+یا کامیت بیایند.
