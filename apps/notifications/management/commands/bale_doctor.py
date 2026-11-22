@@ -18,6 +18,7 @@ from typing import Any
 
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandParser
+from django.utils import timezone
 
 from apps.notifications import probe
 from apps.notifications.bale import BaleError, bale_is_configured
@@ -55,6 +56,13 @@ class Command(BaseCommand):
             help="پیش از سنجش، وب‌هوک را با همین تنظیمات بازثبت کن (بدونِ دورریختنِ صف).",
         )
         parser.add_argument(
+            "--deliveries",
+            type=int,
+            default=0,
+            metavar="N",
+            help="N تحویلِ آخرِ بله را نشان بده (چه رسید، چه شد، پاسخ رفت یا نه).",
+        )
+        parser.add_argument(
             "--report",
             action="store_true",
             help="در پایان یک بلوکِ گزارشِ بی‌راز چاپ کن که می‌شود آن را کپی و فرستاد.",
@@ -66,6 +74,10 @@ class Command(BaseCommand):
         url = self._url(str(options["url"]))
         verdicts: list[str] = []
         info: dict = {}
+
+        if options.get("deliveries"):
+            self._deliveries(int(options["deliveries"]))
+            return
 
         if options.get("fix"):
             self._title("۰) بازثبتِ وب‌هوک (--fix)")
@@ -103,6 +115,24 @@ class Command(BaseCommand):
 
         if options["watch"]:
             self._watch(int(options["watch"]))
+
+    def _deliveries(self, limit: int) -> None:
+        """فهرستِ آخرین تحویل‌ها — «آیا بله اصلاً چیزی فرستاد؟»"""
+        from apps.notifications.models import BaleDeliveryLog
+
+        self._title(f"آخرین {limit} تحویلِ بله")
+        rows = list(BaleDeliveryLog.objects.all()[:limit])
+        if not rows:
+            self._line(False, "دفتر خالی است ⇒ هیچ آپدیتی از بله به این اپ نرسیده.")
+            return
+        for row in rows:
+            when = timezone.localtime(row.created_at).strftime("%m-%d %H:%M:%S")
+            self._line(
+                row.replied,
+                f"{when} · {row.get_source_display()} · chat={row.chat_id} · "
+                f"{row.handled} · پاسخ={'✓' if row.replied else '✗'}"
+                + (f" · {row.note}" if row.note else ""),
+            )
 
     def _reregister(self, url: str) -> None:
         """وب‌هوک را با همین تنظیمات بازثبت می‌کند، بی‌آنکه صف را دور بریزد."""
@@ -260,18 +290,44 @@ class Command(BaseCommand):
         return ok
 
     def _delivery(self, info: dict, verdicts: list[str]) -> None:
-        """شاهدِ واقعی: آیا بله تا حالا چیزی را با موفقیت تحویل داده است؟"""
+        """شاهدِ واقعی: آیا بله تا حالا چیزی را تحویل داده و ما پاسخ داده‌ایم؟
+
+        «صف=۰ و بدونِ خطا» فقط می‌گوید بله **خطا نداشته**؛ نه اینکه چیزی رسیده
+        باشد. روی همین سرور دقیقاً همین ابهام ماند: معلوم نبود بله تحویل داده و
+        ما پاسخ داده‌ایم، یا کاربر هیچ پیامی نفرستاده. حالا دفترِ تحویل
+        (`BaleDeliveryLog`) این را قطعی می‌کند.
+        """
+        from apps.notifications.models import BaleDeliveryLog
+
         if not info.get("url"):
             self._line(False, "تا وقتی وب‌هوک ثبت نشود، تحویلی هم نیست.")
             return
         if info.get("pending_update_count") or info.get("last_error_message"):
             self._line(False, "تحویلِ واقعی هنوز سالم نیست (صف/خطای بالا).")
             return
+
+        recent = list(BaleDeliveryLog.objects.all()[:3])
+        if not recent:
+            self._line(
+                False,
+                "هیچ تحویلی در دفتر ثبت نیست ⇒ بله تا حالا چیزی به این اپ نفرستاده. "
+                "در بله `/start` تازه بفرستید و همین دستور را دوباره بزنید.",
+            )
+            verdicts.append("هنوز هیچ تحویلی ثبت نشده؛ آزمونِ نهایی با یک /start تازه.")
+            return
+        last = recent[0]
+        when = timezone.localtime(last.created_at).strftime("%H:%M:%S")
         self._line(
-            True,
-            "وب‌هوک در بله بی‌خطاست. برای شاهدِ قطعی: در بله `/start` بدهید و بعد "
-            "`manage.py bale_check --ping-webhook` را بزنید (یا همین دستور را با `--watch`).",
+            last.replied,
+            f"آخرین تحویل: {when} · {last.get_source_display()} · {last.handled} · "
+            f"پاسخ {'ارسال شد' if last.replied else 'ارسال نشد'}",
         )
+        if last.replied:
+            self._line(True, f"شاهدِ قطعی: بله تحویل داد و پاسخ به گفتگوی {last.chat_id} رفت.")
+        else:
+            verdicts.append(
+                "بله تحویل داد ولی ارسالِ پاسخ ناموفق بود (توکن/دسترسی ربات به آن گفتگو)."
+            )
 
     def _verdict(
         self,

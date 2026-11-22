@@ -25,6 +25,7 @@ from typing import Any
 from django.core.management.base import BaseCommand, CommandError, CommandParser
 
 from apps.notifications.bale import BaleError, _api, bale_is_configured, send_bale_message
+from apps.notifications.services import record_bale_delivery
 from apps.notifications.views import process_bale_message
 
 OFFSET_FILE = Path("tmp") / "bale-offset.json"
@@ -112,8 +113,16 @@ class Command(BaseCommand):
             if result.get("handled") in {"phone", "linked"}:
                 handled += 1
 
+            delivered = True
             if not options["dry_run"]:
-                send_bale_message(int(chat_id), reply)
+                delivered = send_bale_message(int(chat_id), reply).ok
+                record_bale_delivery(
+                    chat_id=int(chat_id),
+                    handled=str(result["handled"]),
+                    replied=bool(delivered),
+                    source="polling",
+                    note="" if delivered else "ارسالِ پاسخ ناموفق بود",
+                )
 
             if last_update_id:
                 offset = max(offset, last_update_id + 1)

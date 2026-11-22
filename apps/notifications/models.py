@@ -128,3 +128,42 @@ class BaleLinkCode(BaseModel):
     def __str__(self) -> str:
         """نمایش خوانا (بدونِ خودِ کد)."""
         return f"{self.phone_number} · {'مصرف‌شده' if self.consumed_at else 'فعال'}"
+
+
+class BaleDeliveryLog(BaseModel):
+    """دفترِ تحویلِ آپدیت‌های بله — «آیا بله اصلاً چیزی فرستاد؟»
+
+    چرا این جدول لازم شد؟ در آزمونِ واقعی، صفِ بله صفر بود و هیچ راهی نبود
+    بفهمیم بله آپدیت را تحویل داده و ما پاسخ داده‌ایم، یا اصلاً چیزی نرسیده.
+    `getWebhookInfo` فقط «آخرین خطا» و «صف» را می‌گوید؛ چیزی که **رسید** را
+    ثبت کند ندارد. این جدول همان شاهد است: هر تحویل (وب‌هوک یا polling) یک
+    سطر، با نتیجهٔ پردازش و اینکه پاسخ در بله **واقعاً ارسال شد یا نه**.
+
+    ⚠️ هیچ متنِ پیام یا شماره‌ای این‌جا ذخیره نمی‌شود؛ فقط نوعِ پردازش،
+    شناسهٔ گفتگو (برای پیگیری)، و نتیجه. `note` هم فقط دستهٔ خطاست، نه متنِ آن.
+    """
+
+    class Source(models.TextChoices):
+        WEBHOOK = "webhook", "وب‌هوک"
+        POLLING = "polling", "کران (polling)"
+
+    source = models.CharField(
+        max_length=16,
+        choices=Source.choices,
+        default=Source.WEBHOOK,
+        db_index=True,
+        verbose_name="مسیرِ تحویل",
+    )
+    chat_id = models.BigIntegerField(db_index=True, verbose_name="شناسهٔ گفتگو")
+    handled = models.CharField(max_length=32, verbose_name="نوعِ پردازش")
+    replied = models.BooleanField(default=False, verbose_name="پاسخ ارسال شد؟")
+    note = models.CharField(max_length=180, blank=True, default="", verbose_name="یادداشت")
+
+    class Meta:
+        verbose_name = "تحویلِ بله"
+        verbose_name_plural = "دفترِ تحویلِ بله"
+        ordering = ["-created_at", "-id"]
+        indexes = [models.Index(fields=["-created_at"], name="notif_baledel_created_idx")]
+
+    def __str__(self) -> str:
+        return f"{self.get_source_display()} · chat={self.chat_id} · {self.handled}"

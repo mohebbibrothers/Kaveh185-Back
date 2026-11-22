@@ -1327,7 +1327,7 @@ def test_doctor_delivery_layer_variants() -> None:
     text = command.stdout.getvalue()  # type: ignore[attr-defined]
     assert "ثبت نشود" in text
     assert "سالم نیست" in text
-    assert "بی‌خطاست" in text
+    assert "هیچ تحویلی در دفتر ثبت نیست" in text  # صفِ خالی به‌تنهایی شاهد نیست
 
 
 def test_doctor_registration_handles_api_errors(settings: Any) -> None:
@@ -1573,3 +1573,78 @@ def test_bale_inbox_reports_webhook_race(monkeypatch: Any, tmp_path: Any) -> Non
         return_value={"ok": True, "result": "s"},
     ):
         assert Command._active_webhook() == ""
+
+
+@pytest.mark.django_db
+def test_webhook_delivery_is_recorded_with_reply_status(client: Any) -> None:
+    """هر تحویل در دفتر ثبت می‌شود تا «آیا بله چیزی فرستاد؟» قطعی جواب بگیرد."""
+    from apps.notifications.models import BaleDeliveryLog
+
+    with patch("apps.notifications.views.send_bale_message") as sender:
+        sender.return_value.ok = False
+        res = client.post(
+            "/api/v1/notifications/bale/webhook/",
+            data={"message": {"chat": {"id": 777}, "text": "/start"}},
+            content_type="application/json",
+        )
+    assert res.status_code == 200
+    row = BaleDeliveryLog.objects.get()
+    assert row.chat_id == 777
+    assert row.handled == "start"
+    assert row.replied is False
+    assert row.source == "webhook"
+
+
+@pytest.mark.django_db
+def test_doctor_deliveries_lists_ledger(settings: Any) -> None:
+    """`bale_doctor --deliveries` دفترِ تحویل را با وضعیتِ پاسخ نشان می‌دهد."""
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    from apps.notifications.models import BaleDeliveryLog
+
+    settings.BALE_BOT_TOKEN = "t"
+    settings.BALE_WEBHOOK_SECRET = "s"
+    BaleDeliveryLog.objects.create(chat_id=42, handled="linked", replied=True)
+
+    out = StringIO()
+    call_command("bale_doctor", "--deliveries", "5", stdout=out)
+    text = out.getvalue()
+    assert "chat=42" in text and "linked" in text
+
+    BaleDeliveryLog.objects.all().delete()
+    out = StringIO()
+    call_command("bale_doctor", "--deliveries", "5", stdout=out)
+    assert "دفتر خالی است" in out.getvalue()
+
+
+@pytest.mark.django_db
+def test_doctor_delivery_layer_uses_ledger(settings: Any) -> None:
+    """لایهٔ ۷ با دفترِ پر، گواهِ موفق/ناموفق می‌دهد."""
+    from apps.notifications.models import BaleDeliveryLog
+
+    command = _doctor()
+    verdicts: list[str] = []
+    BaleDeliveryLog.objects.create(chat_id=9, handled="start", replied=True)
+    command._delivery({"url": "u", "pending_update_count": 0}, verdicts)
+    text = command.stdout.getvalue()  # type: ignore[attr-defined]
+    assert "شاهدِ قطعی" in text
+
+    BaleDeliveryLog.objects.create(chat_id=9, handled="start", replied=False, note="x")
+    command = _doctor()
+    verdicts = []
+    command._delivery({"url": "u", "pending_update_count": 0}, verdicts)
+    assert any("ناموفق" in v for v in verdicts)
+
+
+@pytest.mark.django_db
+def test_record_bale_delivery_never_raises(monkeypatch: Any) -> None:
+    """حسابرسی نباید تحویل را بشکند؛ خطای دیتابیس فقط لاگ می‌شود."""
+    from apps.notifications.services import record_bale_delivery
+
+    with patch(
+        "apps.notifications.models.BaleDeliveryLog.objects.create",
+        side_effect=RuntimeError("db down"),
+    ):
+        record_bale_delivery(chat_id=1, handled="start", replied=True)

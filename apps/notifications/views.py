@@ -33,6 +33,7 @@ from .services import (
     bale_chat_for_phone,
     consume_bale_code,
     normalize_bale_phone,
+    record_bale_delivery,
     remember_bale_chat,
     send_sms_message,
 )
@@ -396,6 +397,13 @@ class BaleWebhookAPIView(APIView):
             )
         except Exception:
             logger.exception("پردازشِ آپدیتِ بله شکست خورد (chat=%s)", chat.get("id"))
+            if not probe_mode:
+                record_bale_delivery(
+                    chat_id=int(chat.get("id") or 0),
+                    handled="error",
+                    replied=False,
+                    note="خطای پردازش",
+                )
             return Response({"ok": True, "handled": "error", "replied": None})
         chat_id = int(chat["id"])
 
@@ -405,6 +413,14 @@ class BaleWebhookAPIView(APIView):
             _resend_otp_via_bale(phone_number=resend_for, chat_id=chat_id)
 
         delivered = None if probe_mode else _safe_bale_reply(chat_id, str(result["reply"]))
+        if not probe_mode:
+            record_bale_delivery(
+                chat_id=chat_id,
+                handled=str(result["handled"]),
+                replied=bool(delivered),
+                source="webhook",
+                note="" if delivered else "ارسالِ پاسخ ناموفق بود",
+            )
         return Response({"ok": True, "handled": result["handled"], "replied": delivered})
 
 

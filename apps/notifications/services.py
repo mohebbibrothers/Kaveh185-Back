@@ -361,3 +361,33 @@ def consume_bale_code(*, raw_text: str, chat: dict[str, Any]) -> dict[str, Any]:
     row.consumed_at = now
     row.save(update_fields=["consumed_at", "attempts", "updated_at"])
     return {"matched": True, "phone_number": row.phone_number}
+
+
+def record_bale_delivery(
+    *,
+    chat_id: int,
+    handled: str,
+    replied: bool,
+    source: str = "webhook",
+    note: str = "",
+) -> None:
+    """ثبتِ یک تحویل در دفترِ تحویل — هرگز استثنا پرتاب نمی‌کند.
+
+    چرا «هرگز»؟ ثبتِ حسابرسی نباید خودش دلیلِ شکستنِ وب‌هوک شود؛ اگر جدول
+    در دسترس نبود (مثلاً مایگریشن اجرا نشده)، تحویل باید سالم انجام شود و فقط
+    یک هشدار در لاگ بماند.
+    """
+    from apps.notifications.models import BaleDeliveryLog
+
+    try:
+        BaleDeliveryLog.objects.create(
+            source=source,
+            chat_id=int(chat_id),
+            handled=str(handled)[:32],
+            replied=bool(replied),
+            note=note[:180],
+        )
+    except Exception:  # pragma: no cover - فقط در نبودِ جدول/دیتابیس
+        import logging
+
+        logging.getLogger(__name__).warning("ثبتِ تحویلِ بله ناموفق بود", exc_info=True)
