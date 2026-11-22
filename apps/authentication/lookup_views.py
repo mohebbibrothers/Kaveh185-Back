@@ -45,18 +45,36 @@ from .selectors import get_user_exam_eligibility
 from .serializers import UserProfileOutputSerializer
 from .services import issue_tokens_and_session
 from .throttles import RegistrationRateThrottle
-from .validators import normalize_and_validate_phone
+from .validators import normalize_and_validate_national_id, normalize_and_validate_phone
+
+#: پیامِ واحدِ «پیدا نشد» — عمداً برای «شماره نیست» و «کد ملی نمی‌خواند» یکی است.
+_NOT_FOUND_MESSAGE = (
+    "پرونده‌ای با این شماره و کد ملی پیدا نشد. هر دو را بررسی کنید؛ "
+    "اگر تازه‌وارد هستید، ثبت‌نامِ تازه بسازید."
+)
 
 
 class ParticipantLookupInputSerializer(serializers.Serializer):
-    """ورودیِ یافتنِ پرونده: فقط شمارهٔ همراه.
+    """ورودیِ یافتنِ پرونده: شمارهٔ همراه **و** کد ملی.
 
-    شماره به‌صورتِ رشته می‌آید (ارقامِ فارسی هم پذیرفته می‌شود) و همان
-    `normalize_and_validate_phone` آن را استاندارد می‌کند؛ پس اعتبارسنجیِ
-    این‌جا عمداً سبک است تا پیامِ خطا یکی باشد.
+    ── چرا کد ملی الزامی شد؟ ────────────────────────────────────────────────
+    نسخهٔ اول فقط شماره می‌خواست. یعنی هر کسی که شمارهٔ یک شرکت‌کننده را
+    می‌دانست (شماره‌ها در گروه‌های محلی می‌چرخند) می‌توانست نشستِ او را
+    بگیرد و کارنامه‌اش را ببیند. دو عاملِ مستقل، این را می‌بندد — ولی فقط
+    اگر **هم‌زمان** سنجیده شوند.
+
+    ⚠️ `national_id` عمداً `required=True` است، نه «اگر آمد بررسی کن»:
+    یک فیلدِ اختیاری در عمل یعنی «شمارهٔ تنها هم کافی است» و همان باگ را
+    برمی‌گرداند.
+
+    ارقامِ فارسی و خطِ تیره پذیرفته می‌شوند؛ نرمال‌سازی در ویو انجام می‌شود
+    تا پیامِ خطا برای هر دو ورودی یک‌دست باشد.
     """
 
     phone_number = serializers.CharField(max_length=20, help_text="شمارهٔ همراه ثبت‌شده")
+    national_id = serializers.CharField(
+        max_length=20, help_text="کد ملی ۱۰ رقمیِ همان پرونده (برای تأییدِ مالکیت)"
+    )
 
 
 class ParticipantLookupAPIView(APIView):
@@ -100,19 +118,40 @@ class ParticipantLookupAPIView(APIView):
         except Exception:
             return success_response(
                 data={"found": False, "state": "not_found"},
-                message="شمارهٔ همراه معتبر نیست.",
+                message=_NOT_FOUND_MESSAGE,
                 status_code=status.HTTP_200_OK,
             )
 
+        raw_nid = str((request.data or {}).get("national_id", "") or "")
+        try:
+            nid = normalize_and_validate_national_id(raw_nid)
+        except Exception:
+            # کد ملیِ بی‌شکل: همان پاسخِ «پیدا نشد» — نه خطای جداگانه که
+            # تفاوتِ «شماره هست» و «کد ملی بد» را لو بدهد.
+            return success_response(
+                data={"found": False, "state": "not_found"},
+                message=_NOT_FOUND_MESSAGE,
+            )
+
+        # ⚠️ تطابقِ **هم‌زمانِ** شماره و کد ملی، در یک کوئری.
+        # اگر اول شماره را پیدا می‌کردیم و بعد کد ملی را می‌سنجیدیم، زمانِ
+        # پاسخ تفاوت می‌کرد و می‌شد فهمید «شماره هست ولی کد ملی غلط است».
         user = (
-            User.objects.filter(phone_number=phone, is_active=True, role=UserRole.PARTICIPANT)
+            User.objects.filter(
+                phone_number=phone,
+                national_id=nid,
+                is_active=True,
+                role=UserRole.PARTICIPANT,
+            )
             .select_related("mosque")
             .first()
         )
         if user is None:
+            # یک پیام برای هر سه حالت: شماره نیست، کد ملی نیست، یا با هم
+            # نمی‌خوانند. تفکیک‌شان به مهاجم می‌گوید کدام‌یک را باید حدس بزند.
             return success_response(
                 data={"found": False, "state": "not_found"},
-                message="برای این شماره پرونده‌ای نیست؛ ثبت‌نامِ تازه بسازید.",
+                message=_NOT_FOUND_MESSAGE,
             )
 
         mandatory = bool(getattr(settings, "BALE_OTP_MANDATORY", False))
