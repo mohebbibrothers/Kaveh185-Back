@@ -9,7 +9,7 @@
 
 ## اپلیکیشن‌ها
 
-مجموع: **9 اپ** · 21 مدل · 16 مایگریشن · 60 ویو · 72 مسیر
+مجموع: **9 اپ** · 21 مدل · 16 مایگریشن · 60 ویو · 73 مسیر
 
 | اپ | مدل | مایگریشن | ویو | مسیر |
 |---|---:|---:|---:|---:|
@@ -21,7 +21,7 @@
 | `gallery` | 1 | 2 | 3 | 3 |
 | `mosques` | 1 | 2 | 5 | 5 |
 | `notifications` | 4 | 5 | 6 | 6 |
-| `reporting` | 0 | 0 | 6 | 10 |
+| `reporting` | 0 | 0 | 6 | 11 |
 
 ## قرارداد لایه‌ها
 
@@ -132,6 +132,7 @@ Kaveh185-Back/apps/
 │   ├── metrics.py
 │   ├── metrics_views.py
 │   ├── middleware.py
+│   ├── middleware_help.py
 │   ├── models.py  # مدل‌های داده و قیود یکپارچگی دیتابیس
 │   ├── outbox.py
 │   ├── pagination.py
@@ -211,10 +212,12 @@ Kaveh185-Back/apps/
 │   ├── urls.py  # قرارداد مسیرهای API
 │   └── views.py  # لایهٔ مرز HTTP و ارکستریشن
 ├── reporting/
+│   ├── management/
 │   ├── migrations/
 │   ├── templates/
 │   ├── tests/
 │   ├── __init__.py
+│   ├── admin.py
 │   ├── apps.py
 │   ├── caching.py
 │   ├── excel_exporter.py
@@ -269,6 +272,7 @@ apps/core/
 ├── metrics.py
 ├── metrics_views.py
 ├── middleware.py
+├── middleware_help.py
 ├── models.py  # مدل‌های داده و قیود یکپارچگی دیتابیس
 ├── outbox.py
 ├── pagination.py

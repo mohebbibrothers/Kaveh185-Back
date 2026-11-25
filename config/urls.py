@@ -16,6 +16,7 @@ from apps.core.media import serve_media
 from apps.core.metrics_views import PrometheusMetricsView
 from apps.core.responses import not_found_response
 from apps.core.views import APIRootDiscoveryView
+from apps.reporting.ranking_admin import participant_ranking_view
 
 admin_url = str(getattr(settings, "ADMIN_URL_PATH", "secure-kaveh185-admin/")).lstrip("/")
 if not admin_url.endswith("/"):
@@ -35,6 +36,16 @@ urlpatterns = [
     # نبودِ فرانت، `FrontendMiddleware` صفحهٔ ۵۰۳ فارسی می‌دهد.
     # نما Discovery به همان مسیر صریح `api/v1/` منتقل شد.
     path("api/v1/", APIRootDiscoveryView.as_view(), name="api-v1-discovery"),
+    # ⚠️ صفحهٔ «رتبه‌بندی شرکت‌کنندگان» **باید** پیش از `admin.site.urls`
+    # بیاید و صریح فهرست شود. قبلاً با monkeypatch روی `admin.site.get_urls`
+    # وصل می‌شد و روی هاست ۴۰۴ داد (وابسته به ترتیبِ بار‌شدنِ اپ‌ها).
+    # `admin.site.admin_view` همان قفلِ staff/CSRF/کش را می‌دهد؛ یعنی دسترسی
+    # دقیقاً به‌اندازهٔ بقیهٔ پنل امن است.
+    path(
+        f"{admin_url}participant-ranking/",
+        admin.site.admin_view(participant_ranking_view),
+        name="participant-ranking",
+    ),
     path(admin_url, admin.site.urls),
     # پروب‌های سلامت، متریک‌ها و متادیتای نسخه
     path("api/v1/health/", include("apps.core.health.urls")),

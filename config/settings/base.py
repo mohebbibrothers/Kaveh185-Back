@@ -140,6 +140,11 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "apps.core.middleware.APIVersionHeaderMiddleware",
+    # ۴۰۴ِ گویا زیرِ پیشوندِ پنل: اگر مسیری از پنل پیدا نشد و کاربر staff بود،
+    # به‌جای صفحهٔ مبهم، علتِ محتمل و دستورِ تشخیص نشان داده می‌شود
+    # (`apps/core/middleware_help.py`). باید **پیش از** FrontendMiddleware
+    # بیاید تا آن یکی ۴۰۴ را به صفحهٔ فرانت تبدیل نکند.
+    "apps.core.middleware_help.AdminRouteHintMiddleware",
     # ⚠️ باید آخرین باشد: فقط درخواست‌هایی را می‌گیرد که جنگو برایشان ۴۰۴
     # داده است (یعنی مسیری در بک‌اند نیست) و آن‌ها را به فرانت ایستا می‌دهد.
     # اگر پیش از بقیه بیاید، می‌تواند مسیرهای API را ببلعد.

@@ -114,7 +114,7 @@ def bulk_data(seeded_mosques: list[Mosque], django_db_blocker) -> Mosque:
 def test_ranking_list_query_count_is_constant(client, admin_user, bulk_data) -> None:
     """صفحهٔ رتبه‌بندی با ۱۰۰۰ سطر نباید به‌ازای هر سطر کوئری بزند."""
     client.force_login(admin_user)
-    url = reverse("admin:participant-ranking")
+    url = reverse("participant-ranking")
 
     # ۵۰ سطر در صفحه. یک N+1 کلاسیک این را به ۱۰۰+ کوئری می‌رساند.
     response = client.get(url)
@@ -137,7 +137,7 @@ def test_ranking_list_query_count_is_constant(client, admin_user, bulk_data) -> 
 def test_streaming_export_memory_does_not_scale_with_rows(client, admin_user, bulk_data) -> None:
     """خروجیِ CSV جریانی است: اوجِ حافظه باید کوچک بماند (چند مگابایت، نه صدها)."""
     client.force_login(admin_user)
-    url = reverse("admin:participant-ranking")
+    url = reverse("participant-ranking")
 
     tracemalloc.start()
     response = client.get(url, {"export": "csv"})
@@ -153,7 +153,7 @@ def test_streaming_export_memory_does_not_scale_with_rows(client, admin_user, bu
 def test_pagination_covers_all_rows_without_overlap(client, admin_user, bulk_data) -> None:
     """صفحه‌بندی نباید سطری را جا بیندازد یا تکرار کند — با ۱۰۰۰ سطر بررسی می‌شود."""
     client.force_login(admin_user)
-    url = reverse("admin:participant-ranking")
+    url = reverse("participant-ranking")
 
     seen: list[str] = []
     page = 1

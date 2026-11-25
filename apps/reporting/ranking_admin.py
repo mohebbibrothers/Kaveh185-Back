@@ -41,8 +41,7 @@ from django.core.cache import cache
 from django.db.models import Count, QuerySet, Sum
 from django.http import HttpRequest, HttpResponse, StreamingHttpResponse
 from django.template.response import TemplateResponse
-from django.urls import path, reverse
-from django.utils.html import format_html
+from django.urls import reverse
 
 from apps.exam.models import ExamAttempt
 
@@ -56,6 +55,11 @@ from .ranking import (
 )
 
 logger = logging.getLogger(__name__)
+
+#: نشانگرِ نسخه — `manage.py check_ranking_page` با همین می‌فهمد کدِ تازه نصب
+#: شده یا نه. اگر این ثابت روی سرور نبود، یعنی نسخهٔ قدیمی مانده است (و آن
+#: نسخه این صفحه را ندارد). عمداً یک ثابتِ ساده است، نه نسخهٔ پکیج.
+RANKING_PAGE_VERSION = "k185-ranking-v1"
 
 #: سقفِ سطرهای خروجی. `None` یعنی بی‌سقف (آگاهانه، فقط برای ادمین).
 MAX_EXPORT_ROWS = 50_000
@@ -354,29 +358,19 @@ def _export_response(request: HttpRequest, filters: dict[str, Any], fmt: str) ->
     return response
 
 
-def ranking_links_html() -> str:
-    """دکمهٔ میان‌بر در صفحهٔ اصلیِ ادمین (کارتِ «رتبه‌بندی شرکت‌کنندگان»)."""
-    url = reverse("admin:participant-ranking")
-    return format_html(
-        '<a class="k185-ranking-cta" href="{}">🏆 رتبه‌بندی شرکت‌کنندگان و خروجی اکسل</a>',
-        url,
-    )
+def ranking_url() -> str:
+    """نشانیِ صفحهٔ رتبه‌بندی — یک منبعِ حقیقت برای لینک‌دادن.
 
-
-def get_ranking_urls() -> list[Any]:
-    """مسیرهای این صفحه، زیر همان قفلِ `admin_view` (یعنی فقط staff)."""
-    return [
-        path(
-            "participant-ranking/",
-            admin.site.admin_view(participant_ranking_view),
-            name="participant-ranking",
-        )
-    ]
+    ⚠️ نامِ مسیر در `config/urls.py` ثبت شده و **نه** در `admin:`
+    (دلیلش در `apps/reporting/admin.py` توضیح داده شده: monkeypatch روی
+    `admin.site.get_urls` روی هاست ۴۰۴ داد). پس `reverse("participant-ranking")`
+    همیشه کار می‌کند، مستقل از `ADMIN_URL_PATH` و ترتیبِ بار‌شدنِ اپ‌ها.
+    """
+    return reverse("participant-ranking")
 
 
 __all__ = [
     "MAX_EXPORT_ROWS",
-    "get_ranking_urls",
     "participant_ranking_view",
-    "ranking_links_html",
+    "ranking_url",
 ]

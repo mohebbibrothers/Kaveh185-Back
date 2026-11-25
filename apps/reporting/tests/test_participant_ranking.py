@@ -121,7 +121,7 @@ def ranking_data(seeded_mosques: list[Mosque]) -> list[ExamAttempt]:
 
 def test_anonymous_and_participant_are_rejected(client, ranking_data) -> None:
     """صفحه کد ملی نشان می‌دهد؛ پس هر کسی که staff نیست باید رد شود."""
-    url = reverse("admin:participant-ranking")
+    url = reverse("participant-ranking")
 
     response = client.get(url)
     assert response.status_code in (301, 302), "کاربرِ ناشناس باید به صفحهٔ ورود برود"
@@ -141,7 +141,7 @@ def test_anonymous_and_participant_are_rejected(client, ranking_data) -> None:
 def test_ranking_order_is_stable_and_documented(client, admin_user, ranking_data) -> None:
     """ترتیب: امتیاز ← درست ← زمانِ کمتر. و بین دو درخواست نمی‌لرزد."""
     client.force_login(admin_user)
-    url = reverse("admin:participant-ranking")
+    url = reverse("participant-ranking")
 
     first = client.get(url)
     second = client.get(url)
@@ -163,7 +163,7 @@ def test_ranking_order_is_stable_and_documented(client, admin_user, ranking_data
 def test_filters_apply_and_do_not_leak_between_queries(client, admin_user, ranking_data) -> None:
     """فیلتر مسجد/امتیاز کار کند و کش نشود روی فیلترِ دیگر."""
     client.force_login(admin_user)
-    url = reverse("admin:participant-ranking")
+    url = reverse("participant-ranking")
 
     all_rows = client.get(url).context["rows"]
     assert len(all_rows) == 3
@@ -179,7 +179,7 @@ def test_filters_apply_and_do_not_leak_between_queries(client, admin_user, ranki
 def test_xlsx_export_matches_table_order(client, admin_user, ranking_data) -> None:
     """همان رتبهٔ ۱ جدول باید رتبهٔ ۱ اکسل باشد — و فایل واقعاً RTL باشد."""
     client.force_login(admin_user)
-    url = reverse("admin:participant-ranking")
+    url = reverse("participant-ranking")
 
     table_rows = [r["cells"] for r in client.get(url).context["rows"]]
     response = client.get(url, {"export": "xlsx"})
@@ -209,7 +209,7 @@ def test_xlsx_export_matches_table_order(client, admin_user, ranking_data) -> No
 def test_csv_export_has_bom_and_headers(client, admin_user, ranking_data) -> None:
     """CSV باید BOM داشته باشد، وگرنه اکسلِ فارسی متن را به‌هم می‌ریزد."""
     client.force_login(admin_user)
-    url = reverse("admin:participant-ranking")
+    url = reverse("participant-ranking")
 
     response = client.get(url, {"export": "csv"})
     assert response.status_code == 200
@@ -228,7 +228,7 @@ def test_export_does_not_mutate_attempts(client, admin_user, ranking_data) -> No
     before = list(ExamAttempt.objects.order_by("id").values_list("id", "total_score", "status"))
 
     client.force_login(admin_user)
-    url = reverse("admin:participant-ranking")
+    url = reverse("participant-ranking")
     client.get(url)
     list(client.get(url, {"export": "csv"}).streaming_content)
 
@@ -262,7 +262,7 @@ def test_in_progress_attempts_hidden_by_default(client, admin_user, ranking_data
     )
 
     client.force_login(admin_user)
-    url = reverse("admin:participant-ranking")
+    url = reverse("participant-ranking")
 
     default_titles = [r["cells"]["tracking_code"] for r in client.get(url).context["rows"]]
     assert "K185-RUNNING" not in default_titles
@@ -278,4 +278,55 @@ def test_admin_index_has_shortcut_to_ranking(client, admin_user) -> None:
     assert response.status_code == 200
     body = response.content.decode()
     assert "رتبه‌بندی شرکت‌کنندگان" in body
-    assert reverse("admin:participant-ranking") in body
+    assert reverse("participant-ranking") in body
+
+
+def test_route_is_registered_outside_admin_monkeypatch() -> None:
+    """مسیر باید در `config/urls.py` باشد، نه در patchِ `admin.site.get_urls`.
+
+    ⚠️ این تست، رگرسیونِ واقعیِ روی هاست را قفل می‌کند: نسخهٔ اولِ این صفحه
+    مسیرش را با monkeypatch کردنِ `admin.site.get_urls` در `AppConfig.ready()`
+    اضافه می‌کرد. روی محیطِ توسعه کار می‌کرد (ترتیبِ بار‌شدن تصادفی درست بود)
+    و روی هاست ۴۰۴ می‌داد. حالا:
+    * نامِ مسیر در سطحِ ریشه ثبت شده (`participant-ranking`)،
+    * و `admin.site.get_urls` دست‌نخورده است.
+    """
+    from django.contrib import admin
+    from django.urls import resolve, reverse
+
+    url = reverse("participant-ranking")
+    assert url.startswith(f"/{str(reverse('admin:index')).strip('/')}/")
+    assert resolve(url).func.__name__ == "participant_ranking_view"
+
+    # هیچ patchی روی admin نمانده باشد
+    assert not getattr(admin.site, "_k185_ranking_attached", False)
+    assert admin.site.get_urls.__qualname__.startswith("AdminSite."), (
+        "get_urls نباید patch شده باشد؛ مسیر باید صریح در config/urls.py باشد"
+    )
+
+
+def test_version_marker_matches_command_expectation() -> None:
+    """`check_ranking_page` با این نشانگر می‌فهمد کدِ تازه نصب شده یا نه."""
+    from apps.reporting.management.commands.check_ranking_page import MODULE_MARKER
+    from apps.reporting.ranking_admin import RANKING_PAGE_VERSION
+
+    assert RANKING_PAGE_VERSION == MODULE_MARKER
+
+
+def test_api_alias_route_also_works(client, admin_user, ranking_data) -> None:
+    """میان‌برِ `/api/v1/reporting/admin/ranking/` هم همان صفحه را می‌دهد.
+
+    این مسیر برای وقتی است که `ADMIN_URL_PATH` روی میزبان عوض شود؛ همان قفلِ
+    staff روی آن است. اگر روزی کسی آن را حذف کند، ادمین راهِ دومی برای رسیدن
+    به رتبه‌ها ندارد.
+    """
+    from django.urls import reverse
+
+    url = reverse("reporting:admin-ranking-page")
+    assert url == "/api/v1/reporting/admin/ranking/"
+
+    response = client.get(url)
+    assert response.status_code in (301, 302), "کاربرِ ناشناس باید به ورود برود"
+
+    client.force_login(admin_user)
+    assert client.get(url).status_code == 200

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from django.contrib import admin as django_admin
 from django.urls import path
 
+from .ranking_admin import participant_ranking_view
 from .views import (
     AdminExcelExportAPIView,
     AdminLiveAnalyticsDashboardAPIView,
@@ -33,6 +35,16 @@ urlpatterns = [
         "admin/participants/by-tracking/<str:tracking_code>/",
         AdminParticipantByTrackingCodeAPIView.as_view(),
         name="admin-participant-by-tracking",
+    ),
+    # ── میان‌برِ اضطراریِ صفحهٔ رتبه‌بندی ────────────────────────────────
+    # مسیرِ رسمی `/secure-kaveh185-admin/participant-ranking/` است (در
+    # `config/urls.py`). این یکی همان صفحه را زیرِ API هم سرو می‌کند، برای
+    # وقتی `ADMIN_URL_PATH` روی میزبان عوض شده باشد یا کاربر آدرس را گم کند.
+    # همان قفلِ `admin_view` روی آن است، پس فقط staff می‌بیند.
+    path(
+        "admin/ranking/",
+        django_admin.site.admin_view(participant_ranking_view),
+        name="admin-ranking-page",
     ),
     path("admin/export.xlsx", AdminExcelExportAPIView.as_view(), name="admin-export-xlsx"),
     path("export.xlsx", AdminExcelExportAPIView.as_view(), name="export-xlsx-alias"),
