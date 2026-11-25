@@ -42,16 +42,31 @@ grep -E '^\s*DB_(ENGINE|NAME|HOST)' ~/Kaveh185-Back/.env
 
 ## ۲) اگر MySQL/MariaDB است (وضعیتِ فعلیِ هاست)
 
-### پشتیبان
+### پشتیبان — یک دستور
+
+```bash
+bash ~/Kaveh185-Back/deploy/backup-db.sh
+```
+
+این اسکریپت سه کاری می‌کند که نسخهٔ دستی نمی‌کرد:
+
+* **ابزارِ درست را انتخاب می‌کند.** روی MariaDB 11، `mysqldump` «منسوخ» اعلام
+  شده و پیام می‌دهد «از `mariadb-dump` استفاده کنید». اسکریپت اول
+  `mariadb-dump` را می‌بیند و فقط اگر نبود سراغ `mysqldump` می‌رود. (پیامِ
+  منسوخیت خطا نیست، ولی وسطِ آزمون یک هشدارِ قرمزِ بی‌مورد می‌سازد.)
+* **پشتیبان را راستی‌آزمایی می‌کند**: حجم، سلامتِ `gzip -t`، و وجودِ
+  `CREATE TABLE`. پشتیبانی که باز نمی‌شود، پشتیبان نیست.
+* **هرس می‌کند**: ۱۴ نسخهٔ آخر می‌ماند (با `K185_BACKUP_KEEP` عوض می‌شود).
+
+نسخهٔ معادلِ دستی (اگر خواستید خودتان بزنید):
 
 ```bash
 cd ~/Kaveh185-Back
 set -a; . ./.env; set +a
-mkdir -p ~/k185-backups
-mysqldump --single-transaction --quick --default-character-set=utf8mb4 \
+mkdir -p ~/k185-backups && chmod 700 ~/k185-backups
+mariadb-dump --single-transaction --quick --default-character-set=utf8mb4 \
   -h "${DB_HOST:-localhost}" -u "$DB_USER" -p"$DB_PASSWORD" "$DB_NAME" \
   | gzip -9 > ~/k185-backups/db-$(date +%Y%m%d-%H%M).sql.gz
-ls -lh ~/k185-backups | tail -3
 ```
 
 * `--single-transaction` یعنی **بدونِ قفل‌کردنِ جدول‌ها** — پس این کار را

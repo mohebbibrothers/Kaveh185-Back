@@ -90,6 +90,7 @@ def audit_http() -> tuple[int, int]:
             problems += 1
         print(f"  {mark} {path:<24} {code}  {ms:.0f}ms")
 
+    # ── مسیرِ ناشناخته باید ۴۰۴ بدهد، نه ۲۰۰ (وگرنه SPA همه‌چیز را می‌بلعد)
     code, _ = _get(f"{SITE}/not-a-real-page-xyz/")
     codes.append(code)
     mark = OK if code == 404 else WARN
@@ -106,8 +107,6 @@ def audit_http() -> tuple[int, int]:
             "از مرورگر خودتان یا از هاست بررسی کنید."
         )
         return 0, 0
-    mark = OK if code == 404 else WARN
-    print(f"  {mark} {'مسیر ناشناخته → 404':<24} {code}")
     return problems, 0
 
 

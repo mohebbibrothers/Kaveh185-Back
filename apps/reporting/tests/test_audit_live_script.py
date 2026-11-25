@@ -46,3 +46,30 @@ def test_scripts_are_valid_python(script: str) -> None:
         check=False,
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_unknown_path_probe_is_printed_once() -> None:
+    """خطِ «مسیر ناشناخته» نباید دو بار چاپ شود.
+
+    ⚠️ این از خروجیِ واقعیِ هاست آمد: دو خطِ یکسان «مسیر ناشناخته → 404 404»
+    دیده شد، چون هنگامِ جدا کردنِ حالتِ «شبکه در دسترس نیست» یک `print` جا
+    مانده بود. یک ابزارِ عیب‌یابی که خروجیِ تکراری می‌دهد، اعتماد را می‌برد.
+    """
+    source = (BACK / "scripts" / "audit_live.py").read_text(encoding="utf-8")
+    assert source.count("مسیر ناشناخته → 404") == 1
+
+
+def test_backup_script_picks_mariadb_dump_first() -> None:
+    """روی MariaDB 11، `mysqldump` منسوخ است؛ اسکریپت باید `mariadb-dump` را اول ببیند."""
+    script = (BACK / "deploy" / "backup-db.sh").read_text(encoding="utf-8")
+    mariadb_at = script.index("command -v mariadb-dump")
+    mysqld_at = script.index("command -v mysqldump")
+    assert mariadb_at < mysqld_at, "mariadb-dump باید اول بررسی شود"
+
+
+def test_backup_script_verifies_its_own_output() -> None:
+    """پشتیبانی که باز نمی‌شود، پشتیبان نیست — اسکریپت باید خودش بسنجد."""
+    script = (BACK / "deploy" / "backup-db.sh").read_text(encoding="utf-8")
+    assert "gzip -t" in script, "سلامتِ فایلِ gzip باید بررسی شود"
+    assert "CREATE TABLE" in script, "وجودِ جدول‌ها در فایل باید بررسی شود"
+    assert "--single-transaction" in script, "پشتیبان‌گیری نباید جدول‌ها را قفل کند"
