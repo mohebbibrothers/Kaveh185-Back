@@ -109,6 +109,7 @@ Kaveh185-Back/apps/
 │   ├── urls.py  # قرارداد مسیرهای API
 │   └── views.py  # لایهٔ مرز HTTP و ارکستریشن
 ├── core/
+│   ├── db_sqlite/
 │   ├── health/
 │   ├── management/
 │   ├── migrations/
@@ -211,10 +212,14 @@ Kaveh185-Back/apps/
 │   └── views.py  # لایهٔ مرز HTTP و ارکستریشن
 ├── reporting/
 │   ├── migrations/
+│   ├── templates/
 │   ├── tests/
 │   ├── __init__.py
 │   ├── apps.py
+│   ├── caching.py
 │   ├── excel_exporter.py
+│   ├── ranking.py
+│   ├── ranking_admin.py
 │   ├── selectors.py  # خواندن داده و کوئری‌های بهینه‌شده (بدون side effect)
 │   ├── serializers.py  # قرارداد اعتبارسنجی ورودی و خروجی
 │   ├── urls.py  # قرارداد مسیرهای API
@@ -226,6 +231,9 @@ Kaveh185-Back/apps/
 
 ```text
 apps/core/
+├── db_sqlite/
+│   ├── __init__.py
+│   └── base.py
 ├── health/
 │   ├── __init__.py
 │   ├── checks.py

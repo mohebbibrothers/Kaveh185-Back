@@ -167,7 +167,22 @@ WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
 
 # پایگاه داده (قابل پیکربندی برای PostgreSQL، MySQL/MariaDB و SQLite)
-DB_ENGINE = config("DB_ENGINE", default="django.db.backends.sqlite3")
+# ⚠️ بک‌اندِ SQLite را عمداً به `apps.core.db_sqlite` بردیم.
+# دلیلش امنیتی/پایداری است، نه زیبایی: با بک‌اندِ استاندارد، SQLite در حالتِ
+# ژورنالِ `DELETE` **کلِ فایل** را هنگامِ نوشتن قفل می‌کند و در پیکِ آزمون
+# خواندن‌ها با «database is locked» می‌شکنند — یعنی سایت بدونِ هیچ تغییری در
+# کد «قطع» می‌شود. بک‌اندِ ما WAL + busy_timeout + synchronous=NORMAL را روی
+# هر اتصال تنظیم می‌کند (توضیحِ کامل در همان فایل). اگر `DB_ENGINE` را به
+# MySQL تغییر دهید، این بک‌اند به‌کل بی‌اثر می‌شود.
+DB_ENGINE = config(
+    "DB_ENGINE",
+    default="apps.core.db_sqlite",
+    cast=lambda v: (
+        "apps.core.db_sqlite"
+        if v.strip() in {"", "django.db.backends.sqlite3", "sqlite3"}
+        else v.strip()
+    ),
+)
 DB_NAME = config("DB_NAME", default=str(BASE_DIR / "db.sqlite3"))
 DB_USER = config("DB_USER", default="")
 DB_PASSWORD = config("DB_PASSWORD", default="")
@@ -180,7 +195,7 @@ DATABASES: dict[str, dict[str, Any]] = {
         "NAME": DB_NAME,
     }
 }
-if DB_ENGINE != "django.db.backends.sqlite3":
+if not DB_ENGINE.endswith(("sqlite3", "db_sqlite")):
     DATABASES["default"].update(
         {
             "USER": DB_USER,

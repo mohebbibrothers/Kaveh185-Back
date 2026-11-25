@@ -1,0 +1,179 @@
+{% extends "admin/base_site.html" %}
+{% comment %}
+  رتبه‌بندی شرکت‌کنندگان — صفحهٔ سبکِ ادمین با خروجی اکسل/CSV.
+
+  چرا قالبِ جدا و نه خودکارِ `ModelAdmin`؟ چون فهرستِ خودکارِ جنگو نمی‌تواند:
+  «رتبه» را روی کوئریِ مرتب حساب کند، جمعِ تجمیعی نشان دهد، و فایلِ جریانی
+  بدهد. این قالب همان زبانِ بصریِ ادمین را نگه می‌دارد (`base_site.html`) تا
+  ادمین حس نکند به صفحهٔ دیگری رفته.
+
+  ⚠️ هیچ آمارِ سنگینی این‌جا محاسبه نمی‌شود؛ همه‌چیز از context می‌آید.
+{% endcomment %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+  .k185-rank { --k185-ink: #14342b; --k185-line: #e3e7e4; }
+  .k185-rank h1 { margin: 0 0 4px; font-size: 20px; color: var(--k185-ink); }
+  .k185-rank .sub { color: #667; font-size: 12px; margin-bottom: 14px; }
+  .k185-cards { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+  .k185-card {
+    background: #fff; border: 1px solid var(--k185-line); border-radius: 10px;
+    padding: 10px 14px; min-width: 120px; box-shadow: 0 1px 2px rgba(0,0,0,.04);
+  }
+  .k185-card b { display: block; font-size: 19px; color: var(--k185-ink); }
+  .k185-card span { font-size: 11px; color: #778; }
+  .k185-toolbar {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end;
+    background: #f8faf9; border: 1px solid var(--k185-line); border-radius: 10px;
+    padding: 12px; margin-bottom: 14px;
+  }
+  .k185-toolbar label { font-size: 11px; color: #556; display: block; margin-bottom: 3px; }
+  .k185-toolbar input, .k185-toolbar select {
+    padding: 5px 8px; border: 1px solid #cdd5d0; border-radius: 6px; font-size: 12px;
+    min-width: 110px;
+  }
+  .k185-btn {
+    display: inline-block; padding: 7px 13px; border-radius: 7px; font-size: 12px;
+    font-weight: 700; text-decoration: none; border: 1px solid transparent; cursor: pointer;
+  }
+  .k185-btn-primary { background: #1b4332; color: #fff !important; }
+  .k185-btn-ghost { background: #fff; color: #1b4332 !important; border-color: #b9c7c0; }
+  .k185-btn-gold { background: #b8860b; color: #fff !important; }
+  .k185-table-wrap { overflow-x: auto; border: 1px solid var(--k185-line); border-radius: 10px; }
+  table.k185-table { width: 100%; border-collapse: collapse; font-size: 12px; background: #fff; }
+  table.k185-table th {
+    background: #1b4332; color: #fff; padding: 8px 6px; font-size: 11px;
+    font-weight: 700; text-align: center; white-space: nowrap;
+  }
+  table.k185-table td { padding: 7px 6px; border-top: 1px solid #eef1ef; text-align: center; }
+  table.k185-table tr:nth-child(even) td { background: #f7faf8; }
+  table.k185-table td.name { text-align: right; font-weight: 600; }
+  .k185-rank-badge {
+    display: inline-block; min-width: 26px; padding: 2px 6px; border-radius: 6px;
+    background: #eef1ef; color: #1b4332; font-weight: 800;
+  }
+  .k185-rank-badge.top1 { background: #b8860b; color: #fff; }
+  .k185-rank-badge.top3 { background: #d9e6df; color: #14342b; }
+  .k185-pager { display: flex; gap: 10px; align-items: center; margin-top: 12px; font-size: 12px; }
+  .k185-note {
+    margin-top: 16px; padding: 10px 12px; background: #fffdf5; border: 1px solid #f0e3b8;
+    border-radius: 8px; font-size: 11.5px; color: #6b5a1e;
+  }
+  @media (max-width: 700px) { .k185-toolbar input, .k185-toolbar select { min-width: 90px; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="k185-rank">
+  <h1>🏆 {{ title }}</h1>
+  <p class="sub">{{ subtitle }}</p>
+
+  {# ── جمعِ تجمیعی: چهار عدد که ادمین در نگاهِ اول می‌خواهد ───────────────── #}
+  <div class="k185-cards">
+    <div class="k185-card"><b>{{ total }}</b><span>سطر با فیلترِ فعلی</span></div>
+    <div class="k185-card"><b>{{ all_finished }}</b><span>کلِ کارنامه‌های پایان‌یافته</span></div>
+    <div class="k185-card"><b>{{ active_count }}</b><span>در حال پاسخگویی (زنده)</span></div>
+    <div class="k185-card"><b>{{ aggregates.total_correct|default:0 }}</b><span>مجموع پاسخ درست</span></div>
+  </div>
+
+  {# ── فیلترها + خروجی، در یک نوار ───────────────────────────────────────── #}
+  <form method="get" class="k185-toolbar">
+    <div>
+      <label for="q">جست‌وجو (نام، موبایل، کد ملی، کد رهگیری، مسجد)</label>
+      <input id="q" name="q" value="{{ raw_filters.q|default:'' }}" placeholder="مثلاً ۰۰۱۳۵…">
+    </div>
+    <div>
+      <label for="mosque">مسجد</label>
+      <select id="mosque" name="mosque">
+        <option value="">همه</option>
+        {% for m in mosques %}
+          <option value="{{ m.id }}" {% if raw_filters.mosque == m.id|stringformat:"s" %}selected{% endif %}>{{ m.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="status">وضعیت</label>
+      <select id="status" name="status">
+        <option value="all" {% if raw_filters.status == "all" %}selected{% endif %}>همه</option>
+        <option value="completed" {% if raw_filters.status == "completed" %}selected{% endif %}>پایان‌یافته</option>
+        <option value="timed_out" {% if raw_filters.status == "timed_out" %}selected{% endif %}>اتمامِ زمان</option>
+        <option value="in_progress" {% if raw_filters.status == "in_progress" %}selected{% endif %}>در حال پاسخگویی</option>
+      </select>
+    </div>
+    <div>
+      <label for="min_score">حداقل امتیاز</label>
+      <input id="min_score" name="min_score" value="{{ raw_filters.min_score|default:'' }}" inputmode="decimal">
+    </div>
+    <div>
+      <label for="max_score">حداکثر امتیاز</label>
+      <input id="max_score" name="max_score" value="{{ raw_filters.max_score|default:'' }}" inputmode="decimal">
+    </div>
+    <button type="submit" class="k185-btn k185-btn-primary">اعمال</button>
+    <a class="k185-btn k185-btn-ghost" href="?">پاک‌کردن</a>
+  </form>
+
+  <div class="k185-toolbar" style="align-items:center">
+    <a class="k185-btn k185-btn-gold" href="{{ xlsx_url }}">⬇ خروجی اکسل (.xlsx) — با فیلترهای فعلی</a>
+    <a class="k185-btn k185-btn-ghost" href="{{ csv_url }}">⬇ خروجی CSV (سبک‌ترین)</a>
+    <a class="k185-btn k185-btn-ghost" href="{{ full_xlsx_url }}"
+       onclick="return confirm('خروجیِ کامل ممکن است برای چند لحظه طول بکشد. اگر آزمون در جریان است، بهتر است بعد از پایان بگیرید. ادامه؟')">
+      📚 خروجی کامل (بدون سقف)
+    </a>
+    {% if not export_ready %}
+      <span style="color:#a33;font-size:11.5px">یک خروجیِ کاملِ دیگر در حال ساخت است…</span>
+    {% endif %}
+  </div>
+
+  {# ── جدول ──────────────────────────────────────────────────────────────── #}
+  <div class="k185-table-wrap">
+    <table class="k185-table">
+      <thead>
+        <tr>
+          <th>رتبه</th><th>کد رهگیری</th><th>نام و نام خانوادگی</th><th>مسجد</th>
+          <th>درست</th><th>غلط</th><th>بی‌پاسخ</th><th>درصد صحت</th>
+          <th>زمان</th><th>امتیاز کل</th><th>وضعیت</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+          {% with c=row.cells %}
+          <tr>
+            <td>
+              <span class="k185-rank-badge {% if c.rank == 1 %}top1{% elif c.rank <= 3 %}top3{% endif %}">{{ c.rank }}</span>
+            </td>
+            <td style="font-family:monospace">{{ c.tracking_code }}</td>
+            <td class="name">{{ c.full_name }}</td>
+            <td>{{ c.mosque_name }}</td>
+            <td>{{ c.correct_count }}</td>
+            <td>{{ c.wrong_count }}</td>
+            <td>{{ c.unanswered_count }}</td>
+            <td>{{ c.accuracy_percent }}٪</td>
+            <td>{{ c.duration_seconds }}″</td>
+            <td><b>{{ c.total_score }}</b></td>
+            <td>{{ c.status_label }}</td>
+          </tr>
+          {% endwith %}
+        {% empty %}
+          <tr><td colspan="11" style="padding:22px;color:#889">با این فیلترها سطری پیدا نشد.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="k185-pager">
+    {% if prev_url %}<a class="k185-btn k185-btn-ghost" href="{{ prev_url }}">« صفحهٔ قبل</a>{% endif %}
+    <span>صفحهٔ {{ page }} از {{ page_count }} — {{ total }} سطر</span>
+    {% if next_url %}<a class="k185-btn k185-btn-ghost" href="{{ next_url }}">صفحهٔ بعد »</a>{% endif %}
+  </div>
+
+  <div class="k185-note">
+    <b>قاعدهٔ رتبه:</b> امتیاز کل (نزولی) ← تعداد پاسخ درست (نزولی) ← زمان کمتر ← زمانِ ثبتِ زودتر.
+    جلسه‌های «در حال پاسخگویی» به‌طور پیش‌فرض در رتبه‌بندی نمی‌آیند، چون امتیازشان نهایی نشده؛
+    برای دیدنشان فیلترِ وضعیت را روی «در حال پاسخگویی» بگذارید.
+    <br>
+    <b>چرا خروجی سبک است؟</b> این فایل فقط ستون‌های رتبه را دارد و جریانی ساخته می‌شود؛
+    ریزِ پاسخ‌ها و تحلیلِ بانک سوال در «خروجی کامل تحلیلی» (API) است.
+  </div>
+</div>
+{% endblock %}

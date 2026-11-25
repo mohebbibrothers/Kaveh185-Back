@@ -200,7 +200,10 @@ class AdminParticipantExplorerAPIView(APIView):
         params = dict(request.query_params.items())
         include_answers = str(params.get("include_answers", "true")).lower() not in {"false", "0"}
 
-        qs = get_filtered_exam_attempts_queryset(params)
+        # `include_answers=False` ⇒ prefetchِ ریزِ پاسخ‌ها انجام نمی‌شود.
+        # همین یک پرچم، فهرستِ ۲۰ سطریِ ادمین را در پیکِ آزمون چند برابر سریع‌تر
+        # می‌کند، چون هر سطر ۵ آیتم × ۴ گزینه آبجکتِ اضافه می‌ساخت.
+        qs = get_filtered_exam_attempts_queryset(params, include_answers=include_answers)
         paginator = StandardLimitOffsetPagination()
         page = paginator.paginate_queryset(qs, request, view=self)
         offset = paginator.get_offset(request)

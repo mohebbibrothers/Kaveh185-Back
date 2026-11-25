@@ -54,11 +54,24 @@ def _shift_years(ref_date: date, years_back: int) -> date:
         return ref_date.replace(year=target_year, day=28)
 
 
-def get_filtered_exam_attempts_queryset(params: dict[str, Any]) -> QuerySet[ExamAttempt]:
-    """فیلتر و مرتب‌سازی پویا روی کارنامه‌ها و شرکت‌کنندگان برای قرعه‌کشی حضوری و گزارش‌گیری."""
-    qs = ExamAttempt.objects.select_related("user", "mosque").prefetch_related(
-        "items__question__options"
-    )
+def get_filtered_exam_attempts_queryset(
+    params: dict[str, Any], *, include_answers: bool = True
+) -> QuerySet[ExamAttempt]:
+    """فیلتر و مرتب‌سازی پویا روی کارنامه‌ها و شرکت‌کنندگان برای قرعه‌کشی حضوری و گزارش‌گیری.
+
+    Args:
+        params: فیلترهای درخواست (همان نام‌های query string).
+        include_answers: اگر `False`، prefetchِ ریزِ پاسخ‌ها انجام نمی‌شود —
+            برای فهرست‌ها و شمارش‌ها که فقط خلاصهٔ کارنامه را می‌خواهند.
+    """
+    # ⚠️ `prefetch_related("items__question__options")` فقط برای خروجیِ سنگین
+    # لازم است (ریزِ پاسخ‌ها). ولی در فهرستِ معمولی همین prefetch دو کوئریِ
+    # اضافه و چند مگابایت آبجکت می‌سازد. پس فقط وقتی صدا زده می‌شود که کسی
+    # واقعاً ریزِ پاسخ‌ها را بخواهد — با `include_answers=False` صرفه‌جویی
+    # می‌کنیم (پنلِ رتبه‌بندی هم از مسیرِ سبکِ `ranking.py` می‌رود).
+    qs = ExamAttempt.objects.select_related("user", "mosque")
+    if include_answers:
+        qs = qs.prefetch_related("items__question__options")
 
     # فیلتر وضعیت آزمون (پیش‌فرض: آزمون‌های پایان‌یافته `completed` + `timed_out`)
     status_filter = str(params.get("status", "finished")).strip().lower()

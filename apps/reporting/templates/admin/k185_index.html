@@ -1,0 +1,30 @@
+{% extends "admin/index.html" %}
+{% comment %}
+  صفحهٔ اولِ پنل ادمین + یک میان‌برِ بزرگ به «رتبه‌بندی شرکت‌کنندگان».
+
+  چرا این‌جا؟ چون در روزِ داوری، ادمین باید بدونِ گشتنِ منو به رتبه‌ها برسد.
+  این قالب همهٔ چیزهای اصلی را از خودِ `admin/index.html` به ارث می‌برد؛
+  فقط یک کارت بالای فهرست اضافه می‌کند — اگر روزی جنگو قالبش را عوض کند،
+  این هم با آن می‌آید و چیزی نمی‌شکند.
+{% endcomment %}
+
+{% block content %}
+<div id="content-main">
+  <div style="margin:0 0 18px;padding:14px 16px;border-radius:10px;
+              background:linear-gradient(135deg,#1b4332,#2d6a4f);color:#fff;
+              display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between">
+    <div>
+      <div style="font-size:16px;font-weight:800">🏆 رتبه‌بندی شرکت‌کنندگان</div>
+      <div style="font-size:11.5px;opacity:.85;margin-top:3px">
+        فهرستِ زندهٔ رتبه‌ها با فیلترِ مسجد و امتیاز — همین‌جا می‌توانید خروجی اکسل بگیرید.
+      </div>
+    </div>
+    <a href="{% url 'admin:participant-ranking' %}"
+       style="background:#b8860b;color:#fff;text-decoration:none;font-weight:800;
+              padding:9px 18px;border-radius:8px;font-size:13px;white-space:nowrap">
+      دیدنِ رتبه‌بندی و گرفتنِ اکسل →
+    </a>
+  </div>
+</div>
+{{ block.super }}
+{% endblock %}
