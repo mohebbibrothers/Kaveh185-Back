@@ -68,12 +68,14 @@ def audit_http() -> tuple[int, int]:
     """لایه‌های ۱ تا ۳: پروب‌های سلامت و صفحه‌های عمومی."""
     print("\n── ۱) دسترس‌پذیری از بیرون ─────────────────────────────────────")
     problems = 0
+    codes: list[int] = []
 
     for label, path in (
         ("زنده بودن (liveness)", "/api/v1/health/live/"),
         ("آمادگی (readiness)", "/api/v1/health/ready/"),
     ):
         code, ms = _get(f"{SITE}{path}")
+        codes.append(code)
         mark = OK if code == 200 else FAIL
         if code != 200:
             problems += 1
@@ -82,17 +84,28 @@ def audit_http() -> tuple[int, int]:
     print("\n── ۲) صفحه‌های عمومی ───────────────────────────────────────────")
     for path in ("/", "/register/", "/rules/", "/receipt/"):
         code, ms = _get(f"{SITE}{path}")
+        codes.append(code)
         mark = OK if code == 200 else FAIL
         if code != 200:
             problems += 1
         print(f"  {mark} {path:<24} {code}  {ms:.0f}ms")
 
     code, _ = _get(f"{SITE}/not-a-real-page-xyz/")
-    if code == 0:
+    codes.append(code)
+    mark = OK if code == 404 else WARN
+    print(f"  {mark} {'مسیر ناشناخته → 404':<24} {code}")
+
+    # ⚠️ اگر **هیچ** درخواستی پاسخی نگرفت، این دربارهٔ سایت هیچ نمی‌گوید؛
+    # فقط می‌گوید این ماشین به اینترنت/دامنه دسترسی ندارد. قبلاً همین حالت
+    # شش «✖» می‌ساخت و پیامِ آخر می‌گفت «۶ مورد نیازمندِ بررسی» — یعنی یک
+    # هشدارِ دروغ. حالا صریح جدا می‌شود.
+    if codes and all(c == 0 for c in codes):
         print(
-            f"  {WARN} هیچ پاسخی از {SITE} نیامد — اگر این اسکریپت را از داخلِ "
-            "سندباکس اجرا می‌کنید، نبودِ شبکه دلیلش است، نه خرابیِ سایت."
+            f"\n  {WARN} هیچ پاسخی از {SITE} نیامد — شبکه/DNS از این ماشین در "
+            "دسترس نیست.\n     این بخش دربارهٔ سلامتِ سایت چیزی نمی‌گوید؛ "
+            "از مرورگر خودتان یا از هاست بررسی کنید."
         )
+        return 0, 0
     mark = OK if code == 404 else WARN
     print(f"  {mark} {'مسیر ناشناخته → 404':<24} {code}")
     return problems, 0
@@ -143,6 +156,23 @@ def audit_data() -> int:
     print("\n── ۵) وضعیتِ دیتابیس ───────────────────────────────────────────")
     engine = settings.DATABASES["default"]["ENGINE"]
     print(f"  {OK} موتور: {engine}")
+
+    # ⚠️ نسخهٔ قبلیِ همین اسکریپت بی‌قید `PRAGMA` می‌زد. روی هاستی که MySQL
+    # دارد، همان دو خط خطا می‌داد و بخشِ دیتابیس را ناقص می‌کرد. حالا شاخه‌بندی
+    # صریح است: MySQL قفلِ سراسریِ SQLite را ندارد، پس بررسی‌هایش متفاوت است.
+    if "mysql" in engine or "mariadb" in engine:
+        print(f"  {OK} MySQL/MariaDB — ریسکِ «database is locked» وجود ندارد")
+        print(f"  {OK} CONN_MAX_AGE: {settings.DATABASES['default'].get('CONN_MAX_AGE', 0)}")
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT VERSION();")
+            version = cursor.fetchone()[0]
+            cursor.execute("SELECT @@innodb_buffer_pool_size;")
+            pool = cursor.fetchone()[0]
+        print(f"  {OK} نسخه: {version}")
+        mark = OK if int(pool) >= 64 * 1024 * 1024 else WARN
+        print(f"  {mark} innodb_buffer_pool_size: {int(pool) / 1024 / 1024:.0f} مگابایت")
+        return problems
+
     with connection.cursor() as cursor:
         cursor.execute("PRAGMA journal_mode;")
         journal = cursor.fetchone()[0]

@@ -53,3 +53,37 @@ def test_command_fails_loudly_when_route_is_missing(monkeypatch) -> None:
 
     assert exc_info.value.code == 1
     assert "کدِ تازه روی سرور نیست" in out.getvalue()
+
+
+def test_command_reports_mysql_engine_without_sqlite_backup_advice(monkeypatch) -> None:
+    """روی MySQL، توصیهٔ `cp db.sqlite3` نباید چاپ شود (توهمِ امنیت می‌سازد).
+
+    ⚠️ این تست از یک اشتباهِ واقعی می‌آید: راهنما گفت «cp db.sqlite3» و روی
+    هاست جواب داد «No such file». اگر ابزار خودش موتور را نگوید، کاربر فکر
+    می‌کند نسخهٔ بازگشتی دارد و ندارد.
+    """
+    from django.conf import settings
+
+    monkeypatch.setitem(settings.DATABASES["default"], "ENGINE", "django.db.backends.mysql")
+
+    out = StringIO()
+    call_command("check_ranking_page", stdout=out)
+    text = out.getvalue()
+
+    assert "MySQL/MariaDB" in text
+    assert "قفلِ سراسریِ SQLite" in text
+    assert "cp db.sqlite3" not in text, "روی MySQL نباید پشتیبانِ SQLite توصیه شود"
+
+
+def test_command_reports_sqlite_engine_with_wal_advice(monkeypatch) -> None:
+    """روی SQLite، برعکس: باید بگوید بک‌اندِ ما فعال است."""
+    from django.conf import settings
+
+    monkeypatch.setitem(settings.DATABASES["default"], "ENGINE", "apps.core.db_sqlite")
+
+    out = StringIO()
+    call_command("check_ranking_page", stdout=out)
+    text = out.getvalue()
+
+    assert "SQLite با بک‌اندِ ما" in text
+    assert "WAL" in text

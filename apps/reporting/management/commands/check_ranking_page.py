@@ -45,6 +45,36 @@ class Command(BaseCommand):
 
     help = "بررسی می‌کند صفحهٔ رتبه‌بندی در URLها ثبت شده و با کدِ فعلی کار می‌کند."
 
+    def _report_engine(self) -> None:
+        """موتورِ دیتابیس را گزارش می‌کند و اگر MySQL است، هشدارِ مربوطه را می‌دهد.
+
+        ⚠️ چرا این بخش لازم شد؟ روی هاست `db.sqlite3` وجود نداشت — یعنی
+        دیتابیس **MySQL** است، نه SQLite. اگر این را ندانیم:
+        * توصیهٔ «پشتیبان با cp db.sqlite3» بی‌معنا و **خطرناک** است (توهمِ
+          امنیت: خیال می‌کنید نسخهٔ بازگشتی دارید و ندارید)؛
+        * و ریسکِ «database is locked» اصلاً وجود ندارد (آن مخصوصِ SQLite است).
+        پس ابزارِ تشخیص باید صریح بگوید روی چه موتوری هستیم.
+        """
+        engine = str(settings.DATABASES["default"].get("ENGINE", ""))
+        self.stdout.write(f"  · موتورِ دیتابیس: {engine}")
+
+        if engine.endswith("db_sqlite"):
+            self.stdout.write(
+                self.style.SUCCESS("  ✔ SQLite با بک‌اندِ ما (WAL فعال) — پشتیبان: cp db.sqlite3")
+            )
+            return
+        if "mysql" in engine or "mariadb" in engine:
+            self.stdout.write(
+                self.style.SUCCESS(
+                    "  ✔ MySQL/MariaDB — قفلِ سراسریِ SQLite این‌جا موضوعیت ندارد.\n"
+                    "     پشتیبان:  mysqldump --single-transaction <db> > backup.sql"
+                )
+            )
+            return
+        self.stdout.write(
+            self.style.WARNING(f"  ▲ موتورِ ناشناخته ({engine}) — بررسیِ دستی لازم است.")
+        )
+
     def handle(self, *args: Any, **options: Any) -> None:
         """گزارشِ گام‌به‌گام؛ در صورتِ مشکل با کدِ خروجِ ۱ تمام می‌شود."""
         problems: list[str] = []
@@ -107,7 +137,10 @@ class Command(BaseCommand):
                 )
             )
 
-        # ── ۵) نشانیِ کامل برای کپی‌کردن
+        # ── ۵) موتورِ دیتابیس و بک‌اند (SQLite یا MySQL — هر دو پشتیبانی می‌شوند)
+        self._report_engine()
+
+        # ── ۶) نشانیِ کامل برای کپی‌کردن
         hosts = [h for h in getattr(settings, "ALLOWED_HOSTS", []) if h not in {"*", ""}]
         host = next(
             (h for h in hosts if h.startswith("api.")), hosts[0] if hosts else "kaveh185.ir"
