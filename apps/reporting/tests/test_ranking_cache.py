@@ -104,7 +104,15 @@ def test_wal_pragmas_are_applied() -> None:
     from django.conf import settings
     from django.db import connection
 
-    assert settings.DATABASES["default"]["ENGINE"] == "apps.core.db_sqlite", (
+    engine = settings.DATABASES["default"]["ENGINE"]
+    if "sqlite" not in engine and "mysql" in engine:
+        # ⚠️ CI یک شغلِ دوم هم دارد که همان سوئیت را روی MariaDB اجرا می‌کند
+        # (تطابق با موتورِ تولید). آنجا این تست بی‌معناست و *باید* رد شود —
+        # وگرنه یک تستِ درست، CI را قرمز می‌کند. این دقیقاً همان چیزی است که
+        # در اجرای اولِ CI دیدیم.
+        pytest.skip(f"روی {engine} معنا ندارد؛ PRAGMAهای SQLite اینجا نیستند")
+
+    assert engine == "apps.core.db_sqlite", (
         "بک‌اندِ SQLite باید سفارشی باشد؛ وگرنه در پیکِ آزمون «database is locked» برمی‌گردد"
     )
 
