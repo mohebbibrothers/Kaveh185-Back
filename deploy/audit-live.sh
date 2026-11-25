@@ -26,4 +26,9 @@ cd "$APP_DIR"
 [[ -f .env ]] && { set -a; . ./.env; set +a; }
 export DJANGO_SETTINGS_MODULE="${DJANGO_SETTINGS_MODULE:-config.settings.production}"
 
+# ── مسیرِ صفحهٔ رتبه‌بندی (منبعِ یک ۴۰۴ِ واقعی) ───────────────────────────
+echo
+"$PY" manage.py check_ranking_page || echo "  ▲ صفحهٔ رتبه‌بندی مشکل دارد (بالا را ببینید)"
+
+echo
 exec "$PY" manage.py shell < scripts/audit_live.py
